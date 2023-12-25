@@ -82,8 +82,8 @@ def main() -> None:
 
     # Initialize logging, start logging for main process and start listeners
     logging_handler = LoggingHandler.LoggingHandler()
-    LoggingHandler.worker_configurer(logging_handler.queue)
     logging_handler.configure_and_start_listener(args.enable_console_logging)
+    LoggingHandler.worker_configurer(logging_handler.queue)
 
     # Log software version and GitHub link
     logging.info("FloppyCat Simple Backup Utility version: " + str(__version__))
@@ -98,14 +98,17 @@ def main() -> None:
     # Initialize GUI
     gui = GUIHandler.GUIHandler(config_manager)
 
-    # Load GUI (blocking)
-    gui.start_gui(logging_handler, backupper)
+    # Load GUI (blocking) and catch exit code
+    exit_code = gui.start_gui(logging_handler, backupper)
 
     # If we're here, exit requested
-    logging.info("FloppyCat Simple Backup Utility exited successfully")
+    logging.info(f"FloppyCat Simple Backup Utility exited with code: {exit_code}")
 
     # Finally, stop logging loop
     logging_handler.queue.put(None)
+
+    # Return exit code
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

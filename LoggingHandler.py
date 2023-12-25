@@ -39,12 +39,14 @@ def worker_configurer(queue: multiprocessing.Queue, log_test_message: bool = Tru
         queue (multiprocessing.Queue): logging queue
         log_test_message (bool, optional): set to False to disable test log message with process PID. Defaults to True.
     """
-    # Setup queue handler
-    queue_handler = logging.handlers.QueueHandler(queue)
+    # Remove all current handlers
     root_logger = logging.getLogger()
     if root_logger.handlers:
         for handler in root_logger.handlers:
             root_logger.removeHandler(handler)
+
+    # Setup queue handler
+    queue_handler = logging.handlers.QueueHandler(queue)
     root_logger.addHandler(queue_handler)
     root_logger.setLevel(logging.INFO)
 
@@ -69,6 +71,11 @@ def _logging_listener(
     """
     # Get root logger
     root_logger = logging.getLogger()
+
+    # Remove all current handlers (just in case)
+    if root_logger.handlers:
+        for handler in root_logger.handlers:
+            root_logger.removeHandler(handler)
 
     # Setup logging into console
     if console_logging:

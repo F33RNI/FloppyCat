@@ -792,8 +792,13 @@ class _Window(QMainWindow):
 
         # No file -> Exit without asking
         else:
-            # Accept event
             logging.info("Closing GUI")
+
+            # Stop logging handler
+            self._logging_queue.put(None)
+            self._logging_handler.remove_external_queue(self._logging_queue)
+
+            # Accept event
             event.accept()
 
 
@@ -801,8 +806,16 @@ class GUIHandler:
     def __init__(self, config_manager: ConfigManager.ConfigManager):
         self._config_manager = config_manager
 
-    def start_gui(self, logging_handler: LoggingHandler.LoggingHandler, backupper: Backupper.Backupper) -> None:
-        """Starts GUI (blocking)"""
+    def start_gui(self, logging_handler: LoggingHandler.LoggingHandler, backupper: Backupper.Backupper) -> int:
+        """Starts GUI (blocking)
+
+        Args:
+            logging_handler (LoggingHandler.LoggingHandler): LoggingHandler class object
+            backupper (Backupper.Backupper): Backupper class object
+
+        Returns:
+            int: QApplication Window exit code
+        """
         # Replace icon in taskbar
         if os.name == "nt":
             logging.info("Replacing icon in taskbar")
@@ -814,5 +827,6 @@ class GUIHandler:
         app = QApplication.instance() or QApplication(sys.argv)
         app.setStyle("windows")
         _ = _Window(self._config_manager, logging_handler, backupper)
-        app.exec_()
+        exit_code = app.exec_()
         logging.info("GUI closed")
+        return exit_code
