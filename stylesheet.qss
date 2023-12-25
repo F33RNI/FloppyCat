@@ -28,10 +28,14 @@
 
 /*----- Any widget (default values) -----*/
 QWidget {
-    background-color: #eee;
+    background-color: transparent;
     color: #6e4352;
     selection-color: #eee;
     selection-background-color: #c5879d;
+}
+
+#centralwidget {
+    background-color: #eee;
 }
 
 /*----- QToolTip -----*/
@@ -67,7 +71,7 @@ QGroupBox::title {
     left: 4px;
     padding-left: 2px;
     padding-right: 4px;
-    padding-top: -8px;
+    padding-top: 0;
 }
 
 /*----- QComboBox -----*/
@@ -382,5 +386,6 @@ QScrollBar:vertical {
 
 /*-----QStatusBar-----*/
 QStatusBar {
+    background-color: #eee;
     font-size: 14px;
 }
