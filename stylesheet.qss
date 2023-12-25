@@ -28,7 +28,6 @@
 
 /*----- Any widget (default values) -----*/
 QWidget {
-    background-color: transparent;
     color: #6e4352;
     selection-color: #eee;
     selection-background-color: #c5879d;
@@ -48,6 +47,7 @@ QToolTip {
 /*----- QPlainTextEdit -----*/
 QTextEdit,
 QPlainTextEdit {
+    background-color: #eee;
     border: 1px solid #c5879d;
     border-radius: 2px;
 }
@@ -95,6 +95,7 @@ QComboBox::drop-down {
 }
 
 QComboBox QAbstractItemView {
+    background-color: #eee;
     border: 1px solid #c5879d;
     border-radius: 0;
 }
@@ -123,6 +124,7 @@ QScrollArea {
 
 /*-----QLineEdit-----*/
 QLineEdit {
+    background-color: #eee;
     border: 1px solid #c5879d;
     border-radius: 2px;
     padding: 3px;
@@ -245,6 +247,7 @@ QMenuBar::item:selected {
 /*-----QProgressBar-----*/
 
 QProgressBar {
+    background-color: #eee;
     border: 1px solid #c5879d;
     border-radius: 2px;
     text-align: center;
@@ -386,6 +389,5 @@ QScrollBar:vertical {
 
 /*-----QStatusBar-----*/
 QStatusBar {
-    background-color: #eee;
     font-size: 14px;
 }
