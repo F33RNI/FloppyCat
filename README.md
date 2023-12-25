@@ -1,7 +1,7 @@
 # 💾🐈‍⬛ FloppyCat Simple Backup Utility
 
 | <img src="icons/icon.png" alt="FloppyCat logo"/> | <img src="Screenshot.png" alt="FloppyCat screenshot"/> |
-| ----------------------------------------------------- | :-----------------------------------------------------: |
+| ------------------------------------------------ | :----------------------------------------------------: |
 
 ## Simple high-performance utility for creating and validating checksums-based backups with full multiprocessing support
 
@@ -63,6 +63,8 @@ Or message me if you would like to donate 💰
 4. Activate venv `source venv/bin/activate` _(for Linux)_ / `venv\Scripts\activate.bat` _(for Windows)_
 5. Install requirements `pip install -r requirements.txt --upgrade`
 6. Run `pyinstaller FloppyCat.spec` to build executable
+
+> **Note:** if you want to enable logging to console (STDOUT), pass `--enable_console_logging` argument while running FloppyCat
 
 ----------
 
