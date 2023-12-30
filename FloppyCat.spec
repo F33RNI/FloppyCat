@@ -32,7 +32,7 @@ PyInstaller.config.CONF["workpath"] = "./build"
 COMPILE_NAME = "FloppyCat"
 
 # Version of main.py
-COMPILE_VERSION = "1.0.2"
+COMPILE_VERSION = "1.0.3"
 
 # Files and folders to include in final build directory (dist/COMPILE_NAME folder)
 INCLUDE_FILES = [
