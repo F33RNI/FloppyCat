@@ -89,9 +89,18 @@ QComboBox:disabled {
 }
 
 QComboBox::drop-down {
+    background-color: #c5879d;
     subcontrol-position: center right;
-    margin-right: 10px;
-    border: none;
+    border-color: transparent;
+    width: 2em;
+}
+
+QComboBox::drop-down:hover {
+    background-color: #e29cb4;
+}
+
+QComboBox::drop-down:disabled {
+    background-color: #a18991;
 }
 
 QComboBox QAbstractItemView {
@@ -101,19 +110,10 @@ QComboBox QAbstractItemView {
 }
 
 QComboBox::down-arrow {
-    background-color: #c5879d;
+    background-color: transparent;
     height: 100%;
     width: 2em;
 }
-
-QComboBox::down-arrow:hover {
-    background-color: #e29cb4;
-}
-
-QComboBox::down-arrow:disabled {
-    background-color: #a18991;
-}
-
 
 /*-----QScrollArea-----*/
 QScrollArea {
