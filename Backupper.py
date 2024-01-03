@@ -471,7 +471,7 @@ class Backupper:
         return -1
 
     def _generate_tree(
-        self, entries: Dict, root_relative_to_dirname: bool = False, ignore_filepaths_abs: List = []
+        self, entries: Dict, root_relative_to_dirname: bool = False, ignore_filepaths_abs: List or None = None
     ) -> Dict or int:
         """Parses entries and generates dict of files and dirs with the following structure using multiprocessing:
         {
@@ -508,7 +508,7 @@ class Backupper:
         Args:
             entries (Dict): {"path": skip} ex. {"path_1": True, "path_2": False, ...}
             root_relative_to_dirname (bool): True to calculate path relative to dirname(root_dir) instead of root_dir
-            ignore_filepaths_abs (List, optional): list of absolute filepaths to exclude from tree. Defaults to [].
+            ignore_filepaths_abs (List, optional): list of absolute filepaths to exclude from tree. Defaults to None.
 
         Returns:
             Dict or int: parsed tree or exit status in case of cancel
@@ -532,7 +532,7 @@ class Backupper:
         parsed_queue = multiprocessing.Queue(-1)
         for path_abs, skip in entries.items():
             # Check if we need to exclude it
-            if path_abs in ignore_filepaths_abs:
+            if ignore_filepaths_abs and path_abs in ignore_filepaths_abs:
                 continue
 
             # Extract root directory
@@ -592,7 +592,7 @@ class Backupper:
                     path_abs = os.path.join(root_dir, path_rel)
 
                     # Check if we need to exclude it
-                    if path_abs in ignore_filepaths_abs:
+                    if ignore_filepaths_abs and path_abs in ignore_filepaths_abs:
                         continue
 
                     # Put into tree
@@ -1344,7 +1344,7 @@ class Backupper:
             del output_tree
 
             # Extract all existing files / directories inside backup (output_directory) again
-            logging.info(f"Generating output (existing files) tree again")
+            logging.info("Generating output (existing files) tree again")
             output_tree = self._generate_tree({output_dir: False}, ignore_filepaths_abs=[output_dir])
 
             # Exit ?

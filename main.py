@@ -86,7 +86,7 @@ def main() -> None:
     LoggingHandler.worker_configurer(logging_handler.queue)
 
     # Log software version and GitHub link
-    logging.info("FloppyCat Simple Backup Utility version: " + str(__version__))
+    logging.info(f"FloppyCat Simple Backup Utility version: {__version__}")
     logging.info("https://github.com/F33RNI/FloppyCat")
 
     # Load configs

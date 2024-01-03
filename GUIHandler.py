@@ -30,7 +30,6 @@ from PyQt5.QtWidgets import QMainWindow
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
     QApplication,
-    QMainWindow,
     QHBoxLayout,
     QPushButton,
     QLineEdit,
@@ -108,7 +107,7 @@ class _Window(QMainWindow):
 
         # Load font
         if os.path.exists(FONT):
-            logging.info("Loading font from: {}".format(FONT))
+            logging.info(f"Loading font from: {FONT}")
             font_id = QtGui.QFontDatabase.addApplicationFont(FONT)
             font_name = QtGui.QFontDatabase.applicationFontFamilies(font_id)[0]
             self.setFont(QtGui.QFont(font_name, 12 if sys.platform == "darwin" else 10, 300))
