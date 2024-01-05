@@ -1,5 +1,5 @@
 """
- Copyright (C) 2023 Fern Lane, FloppyCat Simple Backup Utility
+ Copyright (C) 2023-2024 Fern Lane, FloppyCat Simple Backup Utility
 
  Licensed under the GNU Affero General Public License, Version 3.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -230,6 +230,7 @@ class _Window(QMainWindow):
                     try:
                         input_entries = self._backupper.parse_input_entries()
                     except Exception as e:
+                        logging.error("Error parsing input entries", exc_info=e)
                         self.dialog_helper(
                             "Error starting backup",
                             "Error parsing input entries",
