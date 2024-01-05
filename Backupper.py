@@ -251,14 +251,20 @@ class Backupper:
                 # Extract current skip flag
                 skip_current = input_entry["skip"]
 
-                # Prevent non-skipped duplicates
-                if input_path in input_entries:
-                    # Extract previous skip flag
-                    skip_previous = input_entries[input_path]
+                # Convert to relative path (as it will be in backup dir)
+                input_path_rel = os.path.relpath(input_path, os.path.dirname(input_path))
 
-                    # If previous one was not skipped and new one also now -> raise an error
-                    if not skip_previous and not skip_current:
-                        raise Exception(f"Duplicated path: {input_path}")
+                # Prevent non-skipped duplicates
+                # TODO: Optimize this code
+                for existing_path, existing_path_skip in input_entries.items():
+                    # Convert to relative path
+                    existing_path_rel = os.path.relpath(existing_path, os.path.dirname(existing_path))
+
+                    # Check if it's the same path
+                    if os.path.normpath(existing_path_rel) == os.path.normpath(input_path_rel):
+                        # If existing one was not skipped and new one also now -> raise an error
+                        if not existing_path_skip and not skip_current:
+                            raise Exception(f"Duplicated path: {input_path}")
 
                 # Check if it exists
                 if not skip_current and not os.path.exists(input_path):
