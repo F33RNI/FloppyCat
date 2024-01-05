@@ -254,7 +254,7 @@ class Backupper:
                 # Prevent non-skipped duplicates
                 if input_path in input_entries:
                     # Extract previous skip flag
-                    skip_previous = input_entries[input_entries]
+                    skip_previous = input_entries[input_path]
 
                     # If previous one was not skipped and new one also now -> raise an error
                     if not skip_previous and not skip_current:
