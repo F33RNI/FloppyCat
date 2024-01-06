@@ -49,7 +49,7 @@ Or message me if you would like to donate 💰
       **_Default:_** `Checked`
    4. `Checksum algorithm:` - Select an algorithm for checksum calculating. **_Default:_** `MD5`
    5. `Workload profile:` - Select the impact of the backup on the system. The higher the value, the more CPU cores will be used. **_Default:_** `Normal`
-   6. `Recalculate current backup checksum` - If set, the checksum of the existing backup will be recalculated each time. **Without this value, the existing checksum file will be used for comparing existing data with input data** **_Default:_** `Unchecked`
+   6. `Recalculate current backup checksum` - If set, the checksum of the existing backup will be recalculated each time. **Without this value, the existing checksum file will be used for comparing existing data with input data and for final `checksums.*` file** **_Default:_** `Unchecked`
 6. Press `Start` button to start the backup process. Upon completion of the backup, **you will get a copy of your data and a file with their checksums** _(as well as some useful statistics and a `tree.txt` file, if `Generate tree.txt file after backup` option was enabled)_
 7. If after some time, you need to check whether the data in the backup has become corrupted, specify your backup directory using _Where to save backup:_ and press `Validate` button. The checksums of all files inside the existing backup will be recalculated and compared with the existing file. At the output you will get statistics with the error rate and some other useful information
 
