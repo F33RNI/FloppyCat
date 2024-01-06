@@ -1,5 +1,5 @@
 """
- Copyright (C) 2023 Fern Lane, FloppyCat Simple Backup Utility
+ Copyright (C) 2023-2024 Fern Lane, FloppyCat Simple Backup Utility
 
  Licensed under the GNU Affero General Public License, Version 3.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -50,15 +50,25 @@ def copy_entries(
 
     Args:
         filepaths_queue (multiprocessing.Queue): queue of non-skipped files to to copy (path relative to root, root dir)
-        checksums_input (Dict): checksums of input files {"filepath_1": "checksum_1", "filepath_2": "checksum_2", ...}
-        checksums_output (Dict): checksums of output files {"filepath_1": "checksum_1", "filepath_2": "checksum_2", ...}
+        checksums_input (Dict): checksums of input files
+        checksums_output (Dict): checksums of output files
+        {
+            "file_1_relative_to_root_path": {
+                "root": "file_1_root_directory",
+                "checksum": "file_1_checksum"
+            },
+            "file_2_relative_to_root_path": {
+                "root": "file_2_root_directory",
+                "checksum": "file_2_checksum"
+            }
+        }
         output_dir (str): path to the output (backup) directory
         stats_copied_ok_value (multiprocessing.Value): counter of total successful copy calls
         stats_copied_error_value (multiprocessing.Value): counter of total unsuccessful copy calls
         stats_created_dirs_ok_value (multiprocessing.Value): counter of total successful mkdirs calls
         stats_created_dirs_error_value (multiprocessing.Value): counter of total unsuccessful mkdirs calls
-        control_value (multiprocessing.Value or None, optional): value (int) to pause / cancel process. Defaults to None.
-        logging_queue (multiprocessing.Queue or None, optional): logging queue to accept logs. Defaults to None.
+        control_value (multiprocessing.Value or None, optional): value (int) to pause / cancel process
+        logging_queue (multiprocessing.Queue or None, optional): logging queue to accept logs
     """
     # Setup logging
     if logging_queue is not None:
@@ -126,8 +136,8 @@ def copy_entries(
 
             # Find input checksum
             checksum_input = None
-            if input_file_abs in checksums_input:
-                checksum_input = checksums_input[input_file_abs]
+            if filepath_rel in checksums_input:
+                checksum_input = checksums_input[filepath_rel]["checksum"]
 
             # Raise an error if no input checksum
             if not checksum_input:
@@ -139,7 +149,7 @@ def copy_entries(
             # Find output checksum
             checksum_output = None
             if filepath_rel in checksums_output:
-                checksum_output = checksums_output[filepath_rel]
+                checksum_output = checksums_output[filepath_rel]["checksum"]
 
             # Skip if file exists and checksums are equal
             if os.path.exists(output_path_abs) and checksum_output and checksum_output == checksum_input:

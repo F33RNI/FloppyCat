@@ -1,5 +1,5 @@
 """
- Copyright (C) 2023 Fern Lane, FloppyCat Simple Backup Utility
+ Copyright (C) 2023-2024 Fern Lane, FloppyCat Simple Backup Utility
 
  Licensed under the GNU Affero General Public License, Version 3.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -38,15 +38,27 @@ BLOCK_SIZE = 4096
 QUEUE_TIMEOUT = 2
 
 
-def parse_checksums_from_file(checksum_file: str, checksum_alg: str) -> Dict:
+def parse_checksums_from_file(checksum_file: str, root_dir: str, checksum_alg: str) -> Dict:
     """Extracts checksums from file as dictionary
 
     Args:
         checksum_file (str): path to file that stores checksums
+        NOTE: Paths in the checksum_file must be relative to root_dir
+        root_dir (str): root directory (just to write to the "root" key in output)
         checksum_alg (str): MD5 / SHA256 / SHA512 for checksum length check
 
     Returns:
-        Dict: {"filepath_1": "checksum_1", "filepath_2": "checksum_2", ...}
+        Dict:
+        {
+            "file_1_relative_to_root_path": {
+                "root": root_dir,
+                "checksum": "file_1_checksum"
+            },
+            "file_2_relative_to_root_path": {
+                "root": root_dir,
+                "checksum": "file_2_checksum"
+            }
+        }
     """
     # Skip if no checksums file
     if not os.path.exists(checksum_file):
@@ -109,7 +121,7 @@ def parse_checksums_from_file(checksum_file: str, checksum_alg: str) -> Dict:
                     continue
 
                 # Finally, append to dict
-                checksums[filepath] = checksum
+                checksums[filepath] = {"root": root_dir, "checksum": checksum}
 
         # Print stats
         logging.info(f"Found {len(checksums)} checksums")
@@ -137,15 +149,20 @@ def calculate_checksums(
 
     Args:
         checksum_out_file (str or None): file to append (a+) checksums or None to don't write to it
-        checksum_out_queue (multiprocessing.Queue or None): queue to handle calculated checksums (filepath, checksum) or None
+        checksum_out_queue (multiprocessing.Queue or None): queue to handle calculated checksums
+        (path relative to root, root dir, checksum) or None
         checksum_alg (str): MD5 / SHA256 / SHA512
-        filepaths_queue (multiprocessing.Queue): queue of non-skipped files to calculate checksums (path relative to root, root dir)
-        output_as_absolute_paths (bool): True to write filepaths as absolute paths instead of relative to root dir
+        filepaths_queue (multiprocessing.Queue): queue of non-skipped files to calculate checksums
+        (path relative to root, root dir)
+        output_as_absolute_paths (bool): True to write filepaths as absolute paths instead of relative to root dir,
+        only matters if checksum_out_file is specified
         stats_checksums_calculate_ok_value (multiprocessing.Value): counter of total successful checksum calculations
-        stats_checksums_calculate_error_value (multiprocessing.Value): counter of total unsuccessful checksum calculations
-        control_value (multiprocessing.Value or None, optional): value (int) to pause / cancel process. Defaults to None.
-        checksum_out_file_lock (multiprocessing.Lock or None, optional). Lock to prevent writing to one file as the same time. Defaults to None.
-        logging_queue (multiprocessing.Queue or None, optional): logging queue to accept logs. Defaults to None.
+        stats_checksums_calculate_error_value (multiprocessing.Value): counter of total unsuccessful
+        checksum calculations
+        control_value (multiprocessing.Value or None, optional): value (int) to pause / cancel process.
+        checksum_out_file_lock (multiprocessing.Lock or None, optional). Lock to prevent writing to one file
+         as the same time.
+        logging_queue (multiprocessing.Queue or None, optional): logging queue to accept logs.
     """
     # Setup logging
     if logging_queue is not None:
@@ -241,7 +258,7 @@ def calculate_checksums(
 
             # Write to the queue
             if checksum_out_queue is not None:
-                checksum_out_queue.put((filepath_write, checksum))
+                checksum_out_queue.put((filepath_rel, filepath_root_dir, checksum))
 
             # Increment stats
             with stats_checksums_calculate_ok_value.get_lock():

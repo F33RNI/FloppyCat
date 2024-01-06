@@ -377,7 +377,7 @@
       <item>
        <widget class="QCheckBox" name="cb_recalculate_checksum">
         <property name="toolTip">
-         <string>Recalculate checksums of all files inside output directory without reusing it</string>
+         <string>Recalculate checksums of all files inside output directory before and after backup without reusing it</string>
         </property>
         <property name="text">
          <string>Recalculate current backup checksum</string>

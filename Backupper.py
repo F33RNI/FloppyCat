@@ -1,5 +1,5 @@
 """
- Copyright (C) 2023 Fern Lane, FloppyCat Simple Backup Utility
+ Copyright (C) 2023-2024 Fern Lane, FloppyCat Simple Backup Utility
 
  Licensed under the GNU Affero General Public License, Version 3.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -367,8 +367,8 @@ class Backupper:
         Args:
             processes (List): list of processes
             control_value (multiprocessing.Value): Value to communicate with processes
-            filler_exit_flag (Dict or None, optional): dict to communicate with filler thread. Defaults to None.
-            process_output_queue (multiprocessing.Queue or None, optional): output from processes to clean it on exit. Defaults to None.
+            filler_exit_flag (Dict or None, optional): dict to communicate with filler thread
+            process_output_queue (multiprocessing.Queue or None, optional): output from processes to clean it on exit
 
         Returns:
             int: >= 0 in case of exit or error
@@ -647,10 +647,15 @@ class Backupper:
         """Calculates checksum of local_files_queue using multiprocessing
 
         Args:
-            checksum_out_file (str or None): file to append (a+) checksums instead or returning checksums as dict
-            {"filepath_1": "checksum_1", "filepath_2": "checksum_2", ...} or None
-            exclude_checksums (Dist): exclude from calculating checksum {"exclude_this_path_1": "checksum_1"}
-            NOTE: exclude_checksums's path must be have the same structure as generated checksums
+            checksum_out_file (str or None): file to append (a+) checksums or None to don't write to it
+            exclude_checksums (Dist): exclude from calculating checksum:
+            {
+                "file_1_to_exclude_relative_to_root_path": {
+                    "root": "file_1_root_directory",
+                    "checksum": "file_1_checksum"
+                },
+                ...
+            }
             checksum_alg (str): MD5 / SHA256 / SHA512
             files_tree (Dict): dict of "files" of tree to calculate checksum of:
             {
@@ -663,17 +668,28 @@ class Backupper:
                     "skip": True
                 }
             }
-            output_as_absolute_paths (bool): True to write filepaths as absolute paths instead of relative to root dir
+            output_as_absolute_paths (bool): True to write filepaths as absolute paths instead of relative to root dir,
+            only matters if checksum_out_file is specified
 
         Returns:
             Dict or int: checksums as dictionary or exit status in case of cancel
+            Output dict will have this format:
+            {
+                "file_1_relative_to_root_path": {
+                    "root": "file_1_root_directory",
+                    "checksum": "file_1_checksum"
+                },
+                "file_2_relative_to_root_path": {
+                    "root": "file_2_root_directory",
+                    "checksum": "file_2_checksum"
+                }
+            }
         """
 
         def _files_tree_queue_filler(
             files_tree_: Dict,
             filepaths_queue_: multiprocessing.Queue,
             exclude_checksums_: Dict or None,
-            output_as_absolute_paths_: bool,
             exit_flag_: Dict,
         ) -> None:
             """Thread body that dynamically puts files from files_tree_ into filepaths_queue_
@@ -681,37 +697,31 @@ class Backupper:
             Args:
                 files_tree_ (Dict): dict of "files" of tree to calculate checksum
                 filepaths_queue_ (multiprocessing.Queue): queue of file paths as tuples (root dir, local path)
-                exclude_checksums (Dist): exclude from calculating checksum {"exclude_this_path_1": "checksum_1"}
-                output_as_absolute_paths (bool): True to if output filepaths are absolute paths
+                exclude_checksums (Dist): exclude from calculating checksum
                 exit_flag_ (Dict): {"exit": False}
             """
             logging.info("Filler thread started")
             update_progress_timer_ = time.time()
             progress_counter = 0
+            skipped_counter = 0
             size_total_ = len(files_tree_)
-            for path_relative_, root_skip_ in files_tree_.items():
+            for path_relative_, root_and_skip_ in files_tree_.items():
                 # Check if we need to exit
                 if exit_flag_["exit"]:
                     break
 
                 # Extract root dir and skip flag
-                root_ = root_skip_["root"]
-                skip_ = root_skip_["skip"]
+                root_ = root_and_skip_["root"]
+                skip_ = root_and_skip_["skip"]
 
                 # Skip it
                 if skip_:
                     continue
 
                 # Check if we need to exclude it
-                if exclude_checksums_ is not None:
-                    # Convert to relative if needed
-                    path_to_find_in_exclude_ = (
-                        os.path.join(root_, path_relative_) if output_as_absolute_paths_ else path_relative_
-                    )
-
-                    # Try to find it
-                    if path_to_find_in_exclude_ in exclude_checksums_:
-                        continue
+                if exclude_checksums_ is not None and path_relative_ in exclude_checksums_:
+                    skipped_counter += 1
+                    continue
 
                 # Put in the queue as (relative path, root dir)
                 filepaths_queue_.put((path_relative_, root_), block=True)
@@ -724,7 +734,7 @@ class Backupper:
                     self._update_progress_bar_status_bar(progress_counter, size_total_)
 
             # Done
-            logging.info("Filler thread finished")
+            logging.info(f"Filler thread finished. Skipped {skipped_counter} checksums")
 
         # Create control Value for pause and cancel
         control_value = multiprocessing.Value("i", PROCESS_CONTROL_WORK)
@@ -766,7 +776,6 @@ class Backupper:
                 files_tree,
                 filepaths_queue,
                 exclude_checksums,
-                output_as_absolute_paths,
                 filler_exit_flag,
             ),
         ).start()
@@ -809,8 +818,8 @@ class Backupper:
             if checksum_out_queue is not None:
                 while not checksum_out_queue.empty():
                     try:
-                        filepath, checksum = checksum_out_queue.get(block=True, timeout=0.1)
-                        checksums[filepath] = checksum
+                        filepath_rel, filepath_root_dir, checksum = checksum_out_queue.get(block=True, timeout=0.1)
+                        checksums[filepath_rel] = {"root": filepath_root_dir, "checksum": checksum}
                     except queue.Empty:
                         break
 
@@ -858,7 +867,8 @@ class Backupper:
 
             Args:
                 output_tree_ (Dict): tree of output files and directories
-                output_tree_queue_ (multiprocessing.Queue): queue of of tree entries (tree_type, filepath_rel, root_skip_empty)
+                output_tree_queue_ (multiprocessing.Queue): queue of of tree entries
+                (tree_type, filepath_rel, root_skip_empty)
                 exit_flag_ (Dict): {"exit": False}
             """
             logging.info("Filler thread started")
@@ -866,13 +876,13 @@ class Backupper:
             progress_counter = 0
             size_total_ = len(output_tree_["files"]) + len(output_tree_["dirs"]) + len(output_tree_["unknown"])
             for tree_type_, local_tree_ in output_tree_.items():
-                for path_relative_, root_skip_empty_ in local_tree_.items():
+                for path_relative_, root_and_skip_and_empty_ in local_tree_.items():
                     # Check if we need to exit
                     if exit_flag_["exit"]:
                         break
 
                     # Put in the queue as (tree_type, filepath_rel, root_skip_empty)
-                    output_tree_queue_.put((tree_type_, path_relative_, root_skip_empty_), block=True)
+                    output_tree_queue_.put((tree_type_, path_relative_, root_and_skip_and_empty_), block=True)
 
                     # Increment items counter
                     progress_counter += 1
@@ -987,14 +997,14 @@ class Backupper:
             update_progress_timer_ = time.time()
             progress_counter = 0
             size_total_ = len(files_tree_)
-            for path_relative_, root_skip_ in files_tree_.items():
+            for path_relative_, root_and_skip_ in files_tree_.items():
                 # Check if we need to exit
                 if exit_flag_["exit"]:
                     break
 
                 # Extract root dir and skip flag
-                root_ = root_skip_["root"]
-                skip_ = root_skip_["skip"]
+                root_ = root_and_skip_["root"]
+                skip_ = root_and_skip_["skip"]
 
                 # Skip it
                 if skip_:
@@ -1158,12 +1168,14 @@ class Backupper:
             input_tree = self._generate_tree(input_entries, root_relative_to_dirname=True)
 
             # Exit ?
-            if type(input_tree) == int:
+            if isinstance(input_tree, int):
                 return input_tree
 
             # Log
             logging.info(
-                f"Files: {len(input_tree['files'])},  dirs: {len(input_tree['dirs'])}, unknown paths: {len(input_tree['unknown'])}"
+                f"Files: {len(input_tree['files'])}, "
+                f"dirs: {len(input_tree['dirs'])}, "
+                f"unknown paths: {len(input_tree['unknown'])}"
             )
 
             # Update progress bar (no real progress here)
@@ -1174,12 +1186,14 @@ class Backupper:
             output_tree = self._generate_tree({output_dir: False}, ignore_filepaths_abs=[output_dir])
 
             # Exit ?
-            if type(output_tree) == int:
+            if isinstance(output_tree, int):
                 return output_tree
 
             # Log
             logging.info(
-                f"Files: {len(output_tree['files'])},  dirs: {len(output_tree['dirs'])}, unknown paths: {len(output_tree['unknown'])}"
+                f"Files: {len(output_tree['files'])}, "
+                f"dirs: {len(output_tree['dirs'])}, "
+                f"unknown paths: {len(output_tree['unknown'])}"
             )
 
             # Update progress bar (no real progress here)
@@ -1204,7 +1218,7 @@ class Backupper:
             )
 
             # Exit ?
-            if type(checksums_input) == int:
+            if isinstance(checksums_input, int):
                 return checksums_input
 
             ############################################
@@ -1212,7 +1226,8 @@ class Backupper:
             ############################################
             self._stage_current += 1
             logging.info(
-                f"STAGE {self._stage_current} / {self._stages_total}: Calculating checksums of existing files inside backup"
+                f"STAGE {self._stage_current} / {self._stages_total}: "
+                "Calculating checksums of existing files inside backup"
             )
 
             # Calculate checksums output file
@@ -1221,7 +1236,7 @@ class Backupper:
             # Parse from file
             checksums_output_parsed = {}
             if not self._config_manager.get_config("recalculate_checksum"):
-                checksums_output_parsed = parse_checksums_from_file(checksum_file_out, checksum_alg)
+                checksums_output_parsed = parse_checksums_from_file(checksum_file_out, output_dir, checksum_alg)
 
             # Calculate checksum using relative file locations
             checksums_output = self._calculate_checksum(
@@ -1233,7 +1248,7 @@ class Backupper:
             )
 
             # Exit ?
-            if type(checksums_output) == int:
+            if isinstance(checksums_output, int):
                 return checksums_output
 
             # Merge
@@ -1249,7 +1264,8 @@ class Backupper:
                 # Delete files
                 self._stage_current += 1
                 logging.info(
-                    f"STAGE {self._stage_current} / {self._stages_total}: Deleting files from backup according to input"
+                    f"STAGE {self._stage_current} / {self._stages_total}: "
+                    "Deleting files from backup according to input"
                 )
 
                 # Delete files
@@ -1271,11 +1287,11 @@ class Backupper:
                 progress_counter = 0
                 empty_dirs_created_counter = 0
                 size_total_ = len(input_tree["dirs"])
-                for path_relative, root_skip_empty in input_tree["dirs"].items():
+                for path_relative, root_and_skip_and_empty in input_tree["dirs"].items():
                     try:
                         # Parse data
-                        skip = root_skip_empty["skip"]
-                        empty = root_skip_empty["empty"]
+                        skip = root_and_skip_and_empty["skip"]
+                        empty = root_and_skip_and_empty["empty"]
 
                         # Ignore if it's not empty or we need to skip it
                         if not empty or skip:
@@ -1346,45 +1362,41 @@ class Backupper:
                 logging.info(f"Deleting {checksum_file_out}")
                 os.remove(checksum_file_out)
 
-            # Delete previous output tree
-            del output_tree
-
-            # Extract all existing files / directories inside backup (output_directory) again
-            logging.info("Generating output (existing files) tree again")
-            output_tree = self._generate_tree({output_dir: False}, ignore_filepaths_abs=[output_dir])
-
-            # Exit ?
-            if type(input_tree) == int:
-                return input_tree
-
-            # Log
-            logging.info(
-                f"Files: {len(input_tree['files'])},  dirs: {len(input_tree['dirs'])}, unknown paths: {len(input_tree['unknown'])}"
-            )
-
-            # Skip previously calculated checksums?
+            # Recalculate
             if self._config_manager.get_config("recalculate_checksum"):
+                # Extract all existing files / directories inside backup (output_directory) again
+                logging.info("Generating output (existing files) tree again")
+                output_tree = self._generate_tree({output_dir: False}, ignore_filepaths_abs=[output_dir])
+
+                # Exit ?
+                if isinstance(output_tree, int):
+                    return output_tree
+
+                # Log
+                logging.info(
+                    f"Files: {len(input_tree['files'])}, "
+                    f"dirs: {len(input_tree['dirs'])}, "
+                    f"unknown paths: {len(input_tree['unknown'])}"
+                )
+
+                # Calculate output checksums again
                 del checksums_output
-                checksums_output = {}
+                checksums_output = self._calculate_checksum(
+                    None,
+                    None,
+                    checksum_alg,
+                    output_tree["files"],
+                    False,
+                )
 
-            # Calculate checksum using relative file locations
-            checksums_output_new = self._calculate_checksum(
-                None,
-                checksums_output,
-                checksum_alg,
-                output_tree["files"],
-                False,
-            )
+                # Exit ?
+                if isinstance(checksums_output, int):
+                    return checksums_output
 
-            # Exit ?
-            if type(checksums_output_new) == int:
-                return checksums_output_new
-
-            # Merge
-            logging.info(
-                f"Merging {len(checksums_output_new)} newly calculated checksums with {len(checksums_output)}"
-            )
-            checksums_output.update(checksums_output_new)
+            # Reuse -> merge with input checksums
+            else:
+                logging.info("Merging checksums")
+                checksums_output.update(checksums_input)
 
             # Delete checksums file
             if os.path.exists(checksum_file_out):
@@ -1394,8 +1406,12 @@ class Backupper:
             # Write to file
             logging.info(f"Writing checksums to the {checksum_file_out}")
             with open(checksum_file_out, "w+", encoding="utf8") as checksum_file_out_stream:
-                for filepath, checksum in checksums_output.items():
-                    checksum_file_out_stream.write(f"{checksum} *{filepath}\n")
+                for path_relative, root_and_checksum in checksums_output.items():
+                    # Extract checksum
+                    checksum = root_and_checksum["checksum"]
+
+                    # Write to the file
+                    checksum_file_out_stream.write(f"{checksum} *{path_relative}\n")
 
             #########################################
             # STAGE 8 (optional): Generate tree.txt #
@@ -1465,9 +1481,9 @@ class Backupper:
 
         Args:
             output_dir (str): absolute path of directory with backup
-            progress_set_value_signal (QtCore.pyqtSignal or None, optional): PyQt signal (int) to update progress bar. Defaults to None.
+            progress_set_value_signal (QtCore.pyqtSignal or None, optional): PyQt signal (int) to update progress bar
             statusbar_show_message_signal (QtCore.pyqtSignal or None): PyQt signal (int) to update status bar
-            finished_signal (QtCore.pyqtSignal or None, optional): PyQt signal (int) for exit callback. Defaults to None.
+            finished_signal (QtCore.pyqtSignal or None, optional): PyQt signal (int) for exit callback
 
         Returns:
             int: EXIT_CODE_... code
@@ -1510,7 +1526,7 @@ class Backupper:
                 raise Exception(f"File {checksum_file_out} doesn't exist!")
 
             # Parse it
-            checksums_parsed = parse_checksums_from_file(checksum_file_out, checksum_alg)
+            checksums_parsed = parse_checksums_from_file(checksum_file_out, output_dir, checksum_alg)
 
             ########################
             # STAGE 2: Parse files #
@@ -1523,12 +1539,14 @@ class Backupper:
             output_tree = self._generate_tree({output_dir: False}, ignore_filepaths_abs=[output_dir])
 
             # Exit ?
-            if type(output_tree) == int:
+            if isinstance(output_tree, int):
                 return output_tree
 
             # Log
             logging.info(
-                f"Files: {len(output_tree['files'])},  dirs: {len(output_tree['dirs'])}, unknown paths: {len(output_tree['unknown'])}"
+                f"Files: {len(output_tree['files'])}, "
+                f"dirs: {len(output_tree['dirs'])}, "
+                f"unknown paths: {len(output_tree['unknown'])}"
             )
 
             ################################
@@ -1547,7 +1565,7 @@ class Backupper:
             )
 
             # Exit ?
-            if type(checksums_output) == int:
+            if isinstance(checksums_output, int):
                 return checksums_output
 
             ##############################
@@ -1560,9 +1578,12 @@ class Backupper:
             update_progress_timer_ = time.time()
             progress_counter = 0
             size_total_ = len(checksums_output)
-            for filepath, checksum in checksums_output.items():
+            for filepath_rel, root_and_checksum in checksums_output.items():
+                # Extract checksum
+                checksum = root_and_checksum["checksum"]
+
                 # Convert to absolute path
-                filepath_abs = os.path.join(output_dir, filepath)
+                filepath_abs = os.path.join(output_dir, filepath_rel)
 
                 # Ignore checksums file itself
                 if (
@@ -1574,8 +1595,8 @@ class Backupper:
 
                 # Try to extract checksum from parsed file
                 checksum_old = None
-                if filepath in checksums_parsed:
-                    checksum_old = checksums_parsed[filepath]
+                if filepath_rel in checksums_parsed:
+                    checksum_old = checksums_parsed[filepath_rel]["checksum"]
 
                 # Doesn't exists
                 if not checksum_old:
@@ -1591,7 +1612,7 @@ class Backupper:
                 # Not matched!
                 else:
                     logging.warning(
-                        f"Actual checksum {checksum} of file {filepath} does't match with checksum {checksum_old}!"
+                        f"Actual checksum {checksum} of file {filepath_rel} does't match with checksum {checksum_old}!"
                     )
                     with self._stats_validate_not_match.get_lock():
                         self._stats_validate_not_match.value += 1
