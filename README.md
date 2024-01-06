@@ -57,7 +57,7 @@ Or message me if you would like to donate 💰
 
 ## 🏗️ Build from source
 
-1. Install Python 3.10 or higher (not tested)
+1. Install Python 3.10 / 3.11 or higher (not tested)
 2. Download source code
 3. Create venv `python -m venv venv` / `python3 -m venv venv` / `python3.10 -m venv venv`
 4. Activate venv `source venv/bin/activate` _(for Linux)_ / `venv\Scripts\activate.bat` _(for Windows)_
