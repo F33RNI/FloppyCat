@@ -288,6 +288,10 @@ class Backupper:
         if self._progress_set_value_signal is None or self._stages_total <= 0:
             return
 
+        # Prevent division by zero
+        if stage_steps == 0 or self._stages_total == 0:
+            return
+
         # Calculate stage's step progress
         if inverted:
             steps_progress = (stage_steps - stage_step) / stage_steps
