@@ -1,7 +1,7 @@
 # 💾🐈‍⬛ FloppyCat Simple Backup Utility
 
-| <img src="icons/icon.png" alt="FloppyCat logo"/> | <img src="Screenshot.png" alt="FloppyCat screenshot"/> |
-| ------------------------------------------------ | :----------------------------------------------------: |
+| ![FloppyCat logo](icons/icon.png) | ![FloppyCat screenshot](Screenshot.png) |
+| --------------------------------- | :-------------------------------------: |
 
 ## Simple high-performance utility for creating and validating checksums-based backups with full multiprocessing support
 
@@ -18,6 +18,25 @@ Or message me if you would like to donate 💰
 
 ----------
 
+## 🚀 Performance
+
+Test conditions:
+
+- Backup entire `/home` directory to the empty external SSD drive
+- 2349231 files and 154914 directories total
+  - 163.7 GiB total
+- Checksum algorithm: `MD5`
+- Workload profile: `High`
+  - 9 / 12 processes on Intel i7-9750H
+- Create empty directories + generate `tree.txt` after backup
+
+Result:
+
+- Checksums calculated: 2349231
+- Total backup time: 19 min 36 sec
+
+----------
+
 ## ❓ Get started
 
 1. Download executable from releases or build it yourself (see  **🏗️ Build from source** section)
@@ -31,8 +50,9 @@ Or message me if you would like to donate 💰
    1. `Delete entries from backup according to input data` - If set, those files inside the existing backup that don't exist in the input paths will be deleted. **Without this flag, files from the backup will never be deleted.** **_Default:_** `Checked`
       1. `Delete skipped entries` - If set, files in skipped paths will also be deleted from the existing backup. Without this flag, if files exist even in the skipped paths, they will not be deleted. **_Default:_** `Unchecked`
    2. `Create empty directories` - If set, all empty folders in the input paths will also be created in the backup. **Without this flag, only non-empty directories will be copied.** **_Default:_** `Checked`
-   3. `Generate tree.txt file after backup` - If set, upon completion of the backup, a `tree.txt` file will be created with the following content: 
-      ```
+   3. `Generate tree.txt file after backup` - If set, upon completion of the backup, a `tree.txt` file will be created with the following content:
+
+      ```text
       doc/
       ├── _static/
       │   ├── embedded/
@@ -46,6 +66,7 @@ Or message me if you would like to donate 💰
       ├── some_file
       └── tree.txt
       ```
+
       **_Default:_** `Checked`
    4. `Checksum algorithm:` - Select an algorithm for checksum calculating. **_Default:_** `MD5`
    5. `Workload profile:` - Select the impact of the backup on the system. The higher the value, the more CPU cores will be used. **_Default:_** `Normal`
@@ -82,6 +103,6 @@ Or message me if you would like to donate 💰
 
 ----------
 
-### 🚧 P.S. This project is still under development and may have many bugs!
+### 🚧 P.S. This project is still under development and may have many bugs
 
 - The author of the project is not responsible for any damage caused to your data / CPU 🙃
