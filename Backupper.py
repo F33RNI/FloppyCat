@@ -252,7 +252,6 @@ class Backupper:
                 input_path_rel = os.path.relpath(input_path, os.path.dirname(input_path))
 
                 # Prevent non-skipped duplicates
-                # TODO: Optimize this code
                 for existing_path, existing_path_skip in input_entries.items():
                     # Convert to relative path
                     existing_path_rel = os.path.relpath(existing_path, os.path.dirname(existing_path))
@@ -521,6 +520,8 @@ class Backupper:
             Dict or int: parsed tree or exit status in case of cancel
         """
         logging.info(f"Generating tree for {len(entries)} entries")
+
+        # TODO: remain "skip" only in parent entries
 
         # Create recursion queue and add each root dir
         directories_to_parse_queue = multiprocessing.Queue(-1)

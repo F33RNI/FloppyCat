@@ -132,8 +132,18 @@ def delete_files(
             delete_flag = True
             if filepath_rel in input_tree[tree_type]:
                 skip_ = input_tree[tree_type][filepath_rel]["skip"]
-                if not (delete_skipped and skip_):
+                if not skip_ or (skip_ and not delete_skipped):
                     delete_flag = False
+
+            # Can not find file directly in input_tree -> try to find it's parent dir
+            else:
+                path_components = os.path.normpath(filepath_rel).split(os.path.sep)
+                if len(path_components) > 1:
+                    filepath_rel_root_dir = path_components[0].strip()
+                    if filepath_rel_root_dir in input_tree["dirs"]:
+                        skip_ = input_tree["dirs"][filepath_rel_root_dir]["skip"]
+                        if not skip_ or (skip_ and not delete_skipped):
+                            delete_flag = False
 
             # Skip if we don't need to delete it
             if not delete_flag:

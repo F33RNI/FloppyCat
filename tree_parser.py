@@ -113,6 +113,10 @@ def tree_parser(
                 logging.info(f"No more directories to parse! tree_parser() with PID {current_pid} exited")
             return
 
+        # Ignore skipped entries
+        if skip:
+            continue
+
         # Convert parent dir to absolute path
         parent_dir_abs = os.path.join(root_dir, parent_dir)
 
