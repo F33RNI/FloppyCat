@@ -20,20 +20,25 @@ Or message me if you would like to donate 💰
 
 ## 🚀 Performance
 
+### Test #1. First backup
+
 Test conditions:
 
-- Backup entire `/home` directory to the empty external SSD drive
-- 2349231 files and 154914 directories total
-  - 163.7 GiB total
+- Backup entire `/home/$USER` directory excluding `.wine` (`~171.1 GiB`) + external `~10.6 GiB` MicroSD card (audio files) to the empty external SSD drive
+- `~181.7 GiB` total
 - Checksum algorithm: `MD5`
 - Workload profile: `High`
   - 9 / 12 processes on Intel i7-9750H
-- Create empty directories + generate `tree.txt` after backup
+- Create empty directories
 
 Result:
 
-- Checksums calculated: 2349231
-- Total backup time: 19 min 36 sec
+- Total backup time: **~40 minutes**
+- Files viewed: **975494**, directories viewed: **161026**
+- Checksums calculated: **975489**, errors: **0**
+- Files and directories copied: **975385**, errors: **5**
+- Files and directories deleted: **0**, errors: **0**
+- Directories created: **127612**, errors: **0**
 
 ----------
 
@@ -47,10 +52,11 @@ Result:
    3. The `🗑️` button will remove the current path from the input data (it will not be copied to the backup)
 4. Select output (backup) directory by pressing `Browse` button or type path manually near _Where to save backup:_
 5. Change settings if you need:
-   1. `Delete entries from backup according to input data` - If set, those files inside the existing backup that don't exist in the input paths will be deleted. **Without this flag, files from the backup will never be deleted.** **_Default:_** `Checked`
+   1. `Follow symlinks` - If set, during tree generation (before calculating checksums, deleting and copying files), symbolic links will be followed (if supported by the system) **_Default:_** `Unchecked`
+   2. `Delete entries from backup according to input data` - If set, those files inside the existing backup that don't exist in the input paths will be deleted. **Without this flag, files from the backup will never be deleted.** **_Default:_** `Checked`
       1. `Delete skipped entries` - If set, files in skipped paths will also be deleted from the existing backup. Without this flag, if files exist even in the skipped paths, they will not be deleted. **_Default:_** `Unchecked`
-   2. `Create empty directories` - If set, all empty folders in the input paths will also be created in the backup. **Without this flag, only non-empty directories will be copied.** **_Default:_** `Checked`
-   3. `Generate tree.txt file after backup` - If set, upon completion of the backup, a `tree.txt` file will be created with the following content:
+   3. `Create empty directories` - If set, all empty folders in the input paths will also be created in the backup. **Without this flag, only non-empty directories will be copied.** **_Default:_** `Checked`
+   4. `Generate tree.txt file after backup` - If set, upon completion of the backup, a `tree.txt` file will be created with the following content:
 
       ```text
       doc/
@@ -68,9 +74,9 @@ Result:
       ```
 
       **_Default:_** `Checked`
-   4. `Checksum algorithm:` - Select an algorithm for checksum calculating. **_Default:_** `MD5`
-   5. `Workload profile:` - Select the impact of the backup on the system. The higher the value, the more CPU cores will be used. **_Default:_** `Normal`
-   6. `Recalculate current backup checksum` - If set, the checksum of the existing backup will be recalculated each time. **Without this value, the existing checksum file will be used for comparing existing data with input data and for final `checksums.*` file** **_Default:_** `Unchecked`
+   5. `Checksum algorithm:` - Select an algorithm for checksum calculating. **_Default:_** `MD5`
+   6. `Workload profile:` - Select the impact of the backup on the system. The higher the value, the more CPU cores will be used. **_Default:_** `Normal`
+   7. `Recalculate current backup checksum` - If set, the checksum of the existing backup will be recalculated each time. **Without this value, the existing checksum file will be used for comparing existing data with input data and for final `checksums.*` file** **_Default:_** `Unchecked`
 6. Press `Start` button to start the backup process. Upon completion of the backup, **you will get a copy of your data and a file with their checksums** _(as well as some useful statistics and a `tree.txt` file, if `Generate tree.txt file after backup` option was enabled)_
 7. If after some time, you need to check whether the data in the backup has become corrupted, specify your backup directory using _Where to save backup:_ and press `Validate` button. The checksums of all files inside the existing backup will be recalculated and compared with the existing file. At the output you will get statistics with the error rate and some other useful information
 
@@ -92,6 +98,7 @@ Result:
 ## 📝 TODO
 
 - Add data compression
+- Add data encryption
 - Add dark theme
 - Improve performance of checksum comparison and `tree.txt` generation
 

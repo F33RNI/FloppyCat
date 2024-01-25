@@ -1,6 +1,7 @@
 """
  https://stackoverflow.com/a/49912639/8163657
  By @abstrus (user:2479038)
+ Symlinks ignoring added by Fern Lane for FloppyCat project
 """
 
 from pathlib import Path
@@ -28,26 +29,32 @@ class DisplayablePath(object):
         return self.path.name
 
     @classmethod
-    def make_tree(cls, root, parent=None, is_last=False, criteria=None):
+    def make_tree(cls, root, parent=None, is_last=False, criteria=None, follow_symlinks=False):
         root = Path(str(root))
         criteria = criteria or cls._default_criteria
 
         displayable_root = cls(root, parent, is_last)
         yield displayable_root
 
-        children = sorted(list(path for path in root.iterdir() if criteria(path)), key=lambda s: str(s).lower())
+        children = sorted(
+            list(path for path in root.iterdir() if criteria(path, follow_symlinks)), key=lambda s: str(s).lower()
+        )
         count = 1
         for path in children:
             is_last = count == len(children)
             if path.is_dir():
-                yield from cls.make_tree(path, parent=displayable_root, is_last=is_last, criteria=criteria)
+                yield from cls.make_tree(
+                    path, parent=displayable_root, is_last=is_last, criteria=criteria, follow_symlinks=follow_symlinks
+                )
             else:
                 yield cls(path, displayable_root, is_last)
             count += 1
 
     @classmethod
-    def _default_criteria(cls, path):
-        return True
+    def _default_criteria(cls, path, follow_symlinks):
+        if follow_symlinks:
+            return True
+        return not path.is_symlink()
 
     @property
     def displayname(self):

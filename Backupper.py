@@ -1435,7 +1435,9 @@ class Backupper:
                 progress_counter = 0
                 size_total_ = len(output_tree["files"]) + len(output_tree["dirs"])
                 with open(tree_file, "w+", encoding="utf8") as tree_file_stream:
-                    for path in DisplayablePath.make_tree(Path(output_dir)):
+                    for path in DisplayablePath.make_tree(
+                        Path(output_dir), follow_symlinks=self._config_manager.get_config("follow_symlinks")
+                    ):
                         tree_file_stream.write(path.displayable() + "\n")
 
                         # Check cancel flag
