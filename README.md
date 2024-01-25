@@ -24,21 +24,40 @@ Or message me if you would like to donate 💰
 
 Test conditions:
 
-- Backup entire `/home/$USER` directory excluding `.wine` (`~171.1 GiB`) + external `~10.6 GiB` MicroSD card (audio files) to the empty external SSD drive
+- Backup entire `/home/$USER` directory excluding `.wine` (`~171.1 GiB`) + external `~10.6 GiB` MicroSD card (audio files) to the empty external **F2FS (LUKS)** SSD drive
 - `~181.7 GiB` total
 - Checksum algorithm: `MD5`
 - Workload profile: `High`
   - 9 / 12 processes on Intel i7-9750H
-- Create empty directories
+- Create empty directories + generate `tree.txt` after backup
 
 Result:
 
-- Total backup time: **~40 minutes**
-- Files viewed: **975494**, directories viewed: **161026**
-- Checksums calculated: **975489**, errors: **0**
-- Files and directories copied: **975385**, errors: **5**
+- Total time: **~17 minutes**
+- Files viewed: **924639**, directories viewed: **153021**
+- Checksums calculated: **924468**, errors: **0**
+- Files and directories copied: **924460**, errors: **0**
 - Files and directories deleted: **0**, errors: **0**
-- Directories created: **127612**, errors: **0**
+- Directories created: **124569**, errors: **0**
+
+### Test #2. Update backup
+
+Test conditions:
+
+- Change some files and backup again entire `/home/$USER` directory excluding `.wine` to the external **F2FS (LUKS)** SSD drive with existing backup
+- Checksum algorithm: `MD5`
+- Workload profile: `High`
+  - 9 / 12 processes on Intel i7-9750H
+- Create empty directories + generate `tree.txt` after backup
+
+Result:
+
+- Total time: **~6 min**
+- Files viewed: **1848965**, directories viewed: **305398**
+- Checksums calculated: **924487**, errors: **0**
+- Files and directories copied: **386**, errors: **0**
+- Files and directories deleted: **24**, errors: **0**
+- Directories created: **20**, errors: **0**
 
 ----------
 
