@@ -149,6 +149,7 @@ class _Window(QMainWindow):
         self.cb_delete_data.setChecked(self._config_manager.get_config("delete_data"))
         self.cb_delete_skipped.setChecked(self._config_manager.get_config("delete_skipped"))
         self.cb_delete_skipped.setEnabled(self._config_manager.get_config("delete_data"))
+        self.cb_follow_symlinks.setChecked(self._config_manager.get_config("follow_symlinks"))
         self.cb_create_empty_dirs.setChecked(self._config_manager.get_config("create_empty_dirs"))
         self.cb_generate_tree.setChecked(self._config_manager.get_config("generate_tree"))
         self.cob_checksum_alg.setCurrentText(self._config_manager.get_config("checksum_alg"))
@@ -162,6 +163,9 @@ class _Window(QMainWindow):
 
         # Connect updaters
         self.le_save_to.textChanged.connect(lambda: self._config_manager.set_config("save_to", self.le_save_to.text()))
+        self.cb_follow_symlinks.clicked.connect(
+            lambda: self._config_manager.set_config("follow_symlinks", self.cb_follow_symlinks.isChecked())
+        )
         self.cb_delete_data.clicked.connect(
             lambda: self._config_manager.set_config("delete_data", self.cb_delete_data.isChecked())
         )

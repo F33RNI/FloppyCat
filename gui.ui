@@ -7,8 +7,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>502</width>
-    <height>608</height>
+    <width>474</width>
+    <height>757</height>
    </rect>
   </property>
   <property name="font">
@@ -28,17 +28,20 @@
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout">
+    <property name="spacing">
+     <number>9</number>
+    </property>
     <property name="leftMargin">
-     <number>12</number>
+     <number>9</number>
     </property>
     <property name="topMargin">
-     <number>12</number>
+     <number>9</number>
     </property>
     <property name="rightMargin">
-     <number>12</number>
+     <number>9</number>
     </property>
     <property name="bottomMargin">
-     <number>6</number>
+     <number>9</number>
     </property>
     <item>
      <widget class="QGroupBox" name="groupBox_3">
@@ -74,8 +77,8 @@
            <rect>
             <x>0</x>
             <y>0</y>
-            <width>474</width>
-            <height>137</height>
+            <width>448</width>
+            <height>112</height>
            </rect>
           </property>
           <layout class="QVBoxLayout" name="verticalLayout_3">
@@ -137,6 +140,33 @@
          <string>Browse</string>
         </property>
        </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <layout class="QHBoxLayout" name="horizontalLayout_8">
+      <item>
+       <widget class="QCheckBox" name="cb_follow_symlinks">
+        <property name="toolTip">
+         <string>Follow symbolic links when parsing files</string>
+        </property>
+        <property name="text">
+         <string>Follow symlinks</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="horizontalSpacer_9">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
       </item>
      </layout>
     </item>

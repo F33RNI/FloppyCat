@@ -26,6 +26,7 @@ CONFIG_DEFAULT = {
     "version": __version__,
     "input_paths": [],
     "save_to": "",
+    "follow_symlinks": False,
     "delete_data": True,
     "delete_skipped": False,
     "create_empty_dirs": True,

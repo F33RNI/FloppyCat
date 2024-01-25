@@ -40,6 +40,7 @@ def tree_parser(
     directories_to_parse_queue: multiprocessing.Queue,
     parsed_queue: multiprocessing.Queue,
     skipped_entries_abs: List[str],
+    follow_symlinks: bool,
     stats_tree_parsed_dirs: multiprocessing.Value,
     stats_tree_parsed_files: multiprocessing.Value,
     control_value: multiprocessing.Value or None = None,
@@ -55,6 +56,7 @@ def tree_parser(
         parsed_queue (multiprocessing.Queue): parsing results as tuples
         (relative path, root dir path, PATH_..., is empty directory)
         skipped_entries_abs (List[str]): list of normalized absolute paths to skip,
+        follow_symlinks (bool): True to follow symlinks, false to ignore them
         stats_tree_parsed_dirs (multiprocessing.Value): counter of total successfully parsed directories
         stats_tree_parsed_files (multiprocessing.Value): counter of total successfully parsed files
         control_value (multiprocessing.Value or None, optional): value (int) to pause / cancel process
@@ -135,7 +137,7 @@ def tree_parser(
         while True:
             # Try to get next path
             try:
-                dir_or_file = next(parent_dir_abs_generator)
+                dir_or_file = next(parent_dir_abs_generator).is_symlink
 
             # No more paths -> exit
             except StopIteration:
@@ -149,6 +151,10 @@ def tree_parser(
 
             # Parse it
             try:
+                # Ignore symlinks
+                if dir_or_file.is_symlink() and not follow_symlinks:
+                    continue
+
                 # Ignore if found in skipped paths
                 if os.path.normpath(str(dir_or_file)) in skipped_entries_abs:
                     continue

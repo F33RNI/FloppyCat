@@ -572,6 +572,7 @@ class Backupper:
                     directories_to_parse_queue,
                     parsed_queue,
                     skipped_entries_abs,
+                    self._config_manager.get_config("follow_symlinks"),
                     self._stats_tree_parsed_dirs,
                     self._stats_tree_parsed_files,
                     control_value,
