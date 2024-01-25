@@ -15,6 +15,7 @@ See the GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License long with this program.
 If not, see <http://www.gnu.org/licenses/>.
 """
+import json
 import logging
 import multiprocessing
 import os
@@ -22,7 +23,7 @@ from pathlib import Path
 import queue
 import threading
 import time
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from PyQt5 import QtCore
 
@@ -478,38 +479,33 @@ class Backupper:
 
     def _generate_tree(
         self, entries: Dict, root_relative_to_dirname: bool = False, ignore_filepaths_abs: List or None = None
-    ) -> Dict or int:
+    ) -> Tuple[Dict, List[str]] or int:
         """Parses entries and generates dict of files and dirs with the following structure using multiprocessing:
-        {
+        ({
             "files": {
                 "file_1_relative_to_root_path": {
-                    "root": "file_1_root_directory",
-                    "skip": False
+                    "root": "file_1_root_directory"
                 },
                 "file_2_relative_to_root_path": {
-                    "root": "file_2_root_directory",
-                    "skip": True
+                    "root": "file_2_root_directory"
                 }
             },
             "dirs": {
                 "dir_1_relative_to_root_path": {
-                    "root": "dir_1_root_directory",
-                    "skip": False,
+                    "root": "dir_1_root_directory"
                     "empty": False
                 },
                 "dir_2_relative_to_root_path": {
-                    "root": "dir_2_root_directory",
-                    "skip": False,
+                    "root": "dir_2_root_directory"
                     "empty": True
                 }
             },
             "unknown": {
                 "this_path_is_wrong_or_does_not_exists": {
-                    "root": "path_1_root_directory",
-                    "skip": True
+                    "root": "path_1_root_directory"
                 }
             }
-        }
+        }, ["skipped_abs_path_1", "skipped_abs_path_2"])
 
         Args:
             entries (Dict): {"path": skip} ex. {"path_1": True, "path_2": False, ...}
@@ -517,14 +513,20 @@ class Backupper:
             ignore_filepaths_abs (List, optional): list of absolute filepaths to exclude from tree. Defaults to None.
 
         Returns:
-            Dict or int: parsed tree or exit status in case of cancel
+            Tuple[Dict, List[str]] or int: parsed tree and skipped entries or exit status in case of cancel
         """
         logging.info(f"Generating tree for {len(entries)} entries")
 
-        # TODO: remain "skip" only in parent entries
-
-        # Create recursion queue and add each root dir
+        # Create recursion queue (and add each root dir after that)
         directories_to_parse_queue = multiprocessing.Queue(-1)
+
+        # Create output queue (and add each file, dir and unknown path after that)
+        parsed_queue = multiprocessing.Queue(-1)
+
+        # Skipped entries as list of absolute paths
+        skipped_entries_abs = []
+
+        # Add each entry
         for path_abs, skip in entries.items():
             if os.path.isdir(path_abs):
                 # Extract root directory
@@ -533,28 +535,27 @@ class Backupper:
                 # Extract parent directory
                 parent_dir = os.path.relpath(path_abs, root_dir) if root_relative_to_dirname else ""
 
-                # (parent dir, abs root path, skip)
-                directories_to_parse_queue.put((parent_dir, root_dir, skip))
+                # Add to the recursion queue (parent dir, abs root path)
+                if not skip:
+                    directories_to_parse_queue.put((parent_dir, root_dir))
 
-        # Create output queue and add each file, dir and unknown path
-        parsed_queue = multiprocessing.Queue(-1)
-        for path_abs, skip in entries.items():
-            # Check if we need to exclude it
-            if ignore_filepaths_abs and path_abs in ignore_filepaths_abs:
-                continue
+                # Add to the output queue / list of skipped entries
+                if not ignore_filepaths_abs or path_abs not in ignore_filepaths_abs:
+                    # Skipped entry
+                    if skip:
+                        skipped_entries_abs.append(path_abs)
 
-            # Extract root directory
-            root_dir = os.path.dirname(path_abs) if root_relative_to_dirname else path_abs
+                    # Non-skipped entry
+                    else:
+                        # Get path type
+                        path_type = (
+                            PATH_IS_FILE
+                            if os.path.isfile(path_abs)
+                            else (PATH_IS_DIR if os.path.isdir(path_abs) else PATH_UNKNOWN)
+                        )
 
-            # Get path type
-            path_type = (
-                PATH_IS_FILE
-                if os.path.isfile(path_abs)
-                else (PATH_IS_DIR if os.path.isdir(path_abs) else PATH_UNKNOWN)
-            )
-
-            # (relative path, root dir path, PATH_..., is empty directory, skip)
-            parsed_queue.put((os.path.relpath(path_abs, root_dir), root_dir, path_type, False, skip))
+                        # (relative path, root dir path, PATH_..., is empty directory)
+                        parsed_queue.put((os.path.relpath(path_abs, root_dir), root_dir, path_type, False))
 
         # Create control Value for pause and cancel
         control_value = multiprocessing.Value("i", PROCESS_CONTROL_WORK)
@@ -571,6 +572,7 @@ class Backupper:
                 args=(
                     directories_to_parse_queue,
                     parsed_queue,
+                    skipped_entries_abs,
                     self._stats_tree_parsed_dirs,
                     self._stats_tree_parsed_files,
                     control_value,
@@ -594,7 +596,7 @@ class Backupper:
             while not parsed_queue.empty():
                 try:
                     # Get data
-                    path_rel, root_dir, path_type, is_empty, skip = parsed_queue.get(block=True, timeout=0.1)
+                    path_rel, root_dir, path_type, is_empty = parsed_queue.get(block=True, timeout=0.1)
 
                     # Convert to absolute path
                     path_abs = os.path.join(root_dir, path_rel)
@@ -605,11 +607,11 @@ class Backupper:
 
                     # Put into tree
                     if path_type is PATH_IS_FILE:
-                        tree["files"][path_rel] = {"root": root_dir, "skip": skip}
+                        tree["files"][path_rel] = {"root": root_dir}
                     elif path_type is PATH_IS_DIR:
-                        tree["dirs"][path_rel] = {"root": root_dir, "skip": skip, "empty": is_empty}
+                        tree["dirs"][path_rel] = {"root": root_dir, "empty": is_empty}
                     else:
-                        tree["unknown"][path_rel] = {"root": root_dir, "skip": skip}
+                        tree["unknown"][path_rel] = {"root": root_dir}
                 except queue.Empty:
                     break
 
@@ -636,7 +638,7 @@ class Backupper:
             time.sleep(0.1)
 
         # Return generated tree
-        return tree
+        return tree, skipped_entries_abs
 
     def _calculate_checksum(
         self,
@@ -662,12 +664,10 @@ class Backupper:
             files_tree (Dict): dict of "files" of tree to calculate checksum of:
             {
                 "file_1_relative_to_root_path": {
-                    "root": "file_1_root_directory",
-                    "skip": False
+                    "root": "file_1_root_directory"
                 },
                 "file_2_relative_to_root_path": {
-                    "root": "file_2_root_directory",
-                    "skip": True
+                    "root": "file_2_root_directory"
                 }
             }
             output_as_absolute_paths (bool): True to write filepaths as absolute paths instead of relative to root dir,
@@ -707,18 +707,13 @@ class Backupper:
             progress_counter = 0
             skipped_counter = 0
             size_total_ = len(files_tree_)
-            for path_relative_, root_and_skip_ in files_tree_.items():
+            for path_relative_, root_ in files_tree_.items():
                 # Check if we need to exit
                 if exit_flag_["exit"]:
                     break
 
-                # Extract root dir and skip flag
-                root_ = root_and_skip_["root"]
-                skip_ = root_and_skip_["skip"]
-
-                # Skip it
-                if skip_:
-                    continue
+                # Extract root dir
+                root_ = root_["root"]
 
                 # Check if we need to exclude it
                 if exclude_checksums_ is not None and path_relative_ in exclude_checksums_:
@@ -849,12 +844,13 @@ class Backupper:
         # Finished OK
         return checksums
 
-    def _delete_files(self, input_tree: Dict, output_tree: Dict) -> int:
+    def _delete_files(self, input_tree: Dict, output_tree: Dict, skipped_entries_abs: List[str]) -> int:
         """Deletes existing files from output dir according to input data
 
         Args:
             input_tree (Dict): all input files and directories
             output_tree (Dict): all output files and directories
+            skipped_entries_abs (List[str]): list of normalized absolute paths to skip or delete (if delete_skipped)
 
         Returns:
             int: >=0 in case of exit
@@ -870,7 +866,7 @@ class Backupper:
             Args:
                 output_tree_ (Dict): tree of output files and directories
                 output_tree_queue_ (multiprocessing.Queue): queue of of tree entries
-                (tree_type, filepath_rel, root_skip_empty)
+                (tree_type, filepath_rel, root_empty)
                 exit_flag_ (Dict): {"exit": False}
             """
             logging.info("Filler thread started")
@@ -878,13 +874,13 @@ class Backupper:
             progress_counter = 0
             size_total_ = len(output_tree_["files"]) + len(output_tree_["dirs"]) + len(output_tree_["unknown"])
             for tree_type_, local_tree_ in output_tree_.items():
-                for path_relative_, root_and_skip_and_empty_ in local_tree_.items():
+                for path_relative_, root_and_empty_ in local_tree_.items():
                     # Check if we need to exit
                     if exit_flag_["exit"]:
                         break
 
-                    # Put in the queue as (tree_type, filepath_rel, root_skip_empty)
-                    output_tree_queue_.put((tree_type_, path_relative_, root_and_skip_and_empty_), block=True)
+                    # Put in the queue as (tree_type, filepath_rel, root_empty)
+                    output_tree_queue_.put((tree_type_, path_relative_, root_and_empty_), block=True)
 
                     # Increment items counter
                     progress_counter += 1
@@ -928,6 +924,7 @@ class Backupper:
                 args=(
                     output_tree_queue,
                     input_tree,
+                    skipped_entries_abs,
                     self._config_manager.get_config("delete_skipped"),
                     self._stats_deleted_ok_value,
                     self._stats_deleted_error_value,
@@ -999,18 +996,13 @@ class Backupper:
             update_progress_timer_ = time.time()
             progress_counter = 0
             size_total_ = len(files_tree_)
-            for path_relative_, root_and_skip_ in files_tree_.items():
+            for path_relative_, root_ in files_tree_.items():
                 # Check if we need to exit
                 if exit_flag_["exit"]:
                     break
 
-                # Extract root dir and skip flag
-                root_ = root_and_skip_["root"]
-                skip_ = root_and_skip_["skip"]
-
-                # Skip it
-                if skip_:
-                    continue
+                # Extract root dir
+                root_ = root_["root"]
 
                 # Put in the queue as (relative path, root dir)
                 filepaths_queue_.put((path_relative_, root_), block=True)
@@ -1173,6 +1165,9 @@ class Backupper:
             if isinstance(input_tree, int):
                 return input_tree
 
+            # Split tuple
+            input_tree, skipped_entries_abs = input_tree
+
             # Log
             logging.info(
                 f"Files: {len(input_tree['files'])}, "
@@ -1190,6 +1185,9 @@ class Backupper:
             # Exit ?
             if isinstance(output_tree, int):
                 return output_tree
+
+            # Split tuple
+            output_tree, _ = output_tree
 
             # Log
             logging.info(
@@ -1271,7 +1269,7 @@ class Backupper:
                 )
 
                 # Delete files
-                delete_files_exit_code = self._delete_files(input_tree, output_tree)
+                delete_files_exit_code = self._delete_files(input_tree, output_tree, skipped_entries_abs)
 
                 # Exit ?
                 if delete_files_exit_code >= 0:
@@ -1289,14 +1287,13 @@ class Backupper:
                 progress_counter = 0
                 empty_dirs_created_counter = 0
                 size_total_ = len(input_tree["dirs"])
-                for path_relative, root_and_skip_and_empty in input_tree["dirs"].items():
+                for path_relative, root_and_empty in input_tree["dirs"].items():
                     try:
                         # Parse data
-                        skip = root_and_skip_and_empty["skip"]
-                        empty = root_and_skip_and_empty["empty"]
+                        empty = root_and_empty["empty"]
 
-                        # Ignore if it's not empty or we need to skip it
-                        if not empty or skip:
+                        # Ignore if it's not empty
+                        if not empty:
                             continue
 
                         # Convert to absolute path combining with output_dir
@@ -1373,6 +1370,9 @@ class Backupper:
                 # Exit ?
                 if isinstance(output_tree, int):
                     return output_tree
+
+                # Split tuple
+                output_tree, _ = output_tree
 
                 # Log
                 logging.info(
@@ -1543,6 +1543,9 @@ class Backupper:
             # Exit ?
             if isinstance(output_tree, int):
                 return output_tree
+
+            # Split tuple
+            output_tree, _ = output_tree
 
             # Log
             logging.info(

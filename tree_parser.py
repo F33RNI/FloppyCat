@@ -21,6 +21,7 @@ import os
 import pathlib
 import queue
 import time
+from typing import List
 
 import LoggingHandler
 
@@ -38,6 +39,7 @@ PATH_UNKNOWN = 2
 def tree_parser(
     directories_to_parse_queue: multiprocessing.Queue,
     parsed_queue: multiprocessing.Queue,
+    skipped_entries_abs: List[str],
     stats_tree_parsed_dirs: multiprocessing.Value,
     stats_tree_parsed_files: multiprocessing.Value,
     control_value: multiprocessing.Value or None = None,
@@ -49,9 +51,10 @@ def tree_parser(
 
     Args:
         directories_to_parse_queue (multiprocessing.Queue): queue of directories to parse.
-        Put your initial dir here. Format: (relative parent dir or "", absolute path of root directory, skip)
+        Put your initial dir here. Format: (relative parent dir or "", absolute path of root directory)
         parsed_queue (multiprocessing.Queue): parsing results as tuples
-        (relative path, root dir path, PATH_..., is empty directory, skip)
+        (relative path, root dir path, PATH_..., is empty directory)
+        skipped_entries_abs (List[str]): list of normalized absolute paths to skip,
         stats_tree_parsed_dirs (multiprocessing.Value): counter of total successfully parsed directories
         stats_tree_parsed_files (multiprocessing.Value): counter of total successfully parsed files
         control_value (multiprocessing.Value or None, optional): value (int) to pause / cancel process
@@ -107,18 +110,18 @@ def tree_parser(
 
         # Retrieve from queue and exit process on timeout
         try:
-            parent_dir, root_dir, skip = directories_to_parse_queue.get(block=True, timeout=QUEUE_TIMEOUT)
+            parent_dir, root_dir = directories_to_parse_queue.get(block=True, timeout=QUEUE_TIMEOUT)
         except queue.Empty:
             if logging_queue is not None:
                 logging.info(f"No more directories to parse! tree_parser() with PID {current_pid} exited")
             return
 
-        # Ignore skipped entries
-        if skip:
-            continue
-
         # Convert parent dir to absolute path
         parent_dir_abs = os.path.join(root_dir, parent_dir)
+
+        # Ignore if found in skipped paths
+        if parent_dir_abs in skipped_entries_abs:
+            continue
 
         # Try to create generator to iterate all files and dirs inside this directory
         try:
@@ -146,13 +149,17 @@ def tree_parser(
 
             # Parse it
             try:
+                # Ignore if found in skipped paths
+                if os.path.normpath(str(dir_or_file)) in skipped_entries_abs:
+                    continue
+
                 # Find path relative to root
                 dir_or_file_rel = os.path.relpath(dir_or_file, root_dir)
 
                 # Just file -> put to parsed queue
                 if dir_or_file.is_file():
-                    # (relative path, root dir path, PATH_..., is empty directory, skip)
-                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_IS_FILE, False, skip))
+                    # (relative path, root dir path, PATH_..., is empty directory)
+                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_IS_FILE, False))
 
                     # Increment counter
                     with stats_tree_parsed_files.get_lock():
@@ -166,12 +173,12 @@ def tree_parser(
                     except:
                         is_empty = False
 
-                    # (relative path, root dir path, PATH_..., is empty directory, skip)
-                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_IS_DIR, is_empty, skip))
+                    # (relative path, root dir path, PATH_..., is empty directory)
+                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_IS_DIR, is_empty))
 
                     # Put again in recursion if not empty with the same root
                     if not is_empty:
-                        directories_to_parse_queue.put((dir_or_file_rel, root_dir, skip))
+                        directories_to_parse_queue.put((dir_or_file_rel, root_dir))
 
                     # Increment counter
                     with stats_tree_parsed_dirs.get_lock():
@@ -179,8 +186,8 @@ def tree_parser(
 
                 # Not a file or directory -> put to parsed queue as PATH_UNKNOWN
                 else:
-                    # (relative path, root dir path, PATH_..., is empty directory, skip)
-                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_UNKNOWN, False, skip))
+                    # (relative path, root dir path, PATH_..., is empty directory)
+                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_UNKNOWN, False))
 
                     # Increment files counter ¯\_(ツ)_/¯
                     with stats_tree_parsed_files.get_lock():

@@ -21,7 +21,7 @@ import os
 import queue
 import shutil
 import time
-from typing import Dict
+from typing import Dict, List
 
 import LoggingHandler
 
@@ -31,9 +31,35 @@ from _control_values import PROCESS_CONTROL_WORK, PROCESS_CONTROL_PAUSE, PROCESS
 QUEUE_TIMEOUT = 5
 
 
+def is_path_relative_to(parent_path: List[str], child_path: List[str]) -> bool:
+    """Determines if child_path can be inside (and continue) parent_path
+
+    Args:
+        parent_path (List[str]): os.path.normpath("/dir_a/dir_b/dir_c/dir_d").split(os.path.sep)
+        child_path (List[str]): os.path.normpath("dir_c/dir_d/dir_e/text.txt").split(os.path.sep)
+
+    Returns:
+        bool: True in case of example above
+    """
+    child_part_index = 0
+    parent_part_last_match_index = -1
+    for i, parent_path_part in enumerate(parent_path):
+        if parent_path_part == child_path[child_part_index]:
+            child_part_index += 1
+            parent_part_last_match_index = i
+            if child_part_index >= len(child_path):
+                break
+        else:
+            child_part_index = 0
+            parent_part_last_match_index = -1
+
+    return parent_part_last_match_index == len(parent_path) - 1
+
+
 def delete_files(
     output_tree_queue: multiprocessing.Queue,
     input_tree: Dict,
+    skipped_entries_abs: List[str],
     delete_skipped: bool,
     stats_deleted_ok_value: multiprocessing.Value,
     stats_deleted_error_value: multiprocessing.Value,
@@ -43,8 +69,9 @@ def delete_files(
     """Process body to delete files from existing backup according to input tree
 
     Args:
-        output_files_tree_queue (multiprocessing.Queue): output tree as Queue (tree_type, filepath_rel, root_skip_empty)
+        output_files_tree_queue (multiprocessing.Queue): output tree as Queue (tree_type, filepath_rel, root_empty)
         input_tree (Dict): tree of all input files and directories
+        skipped_entries_abs (List[str]): list of normalized absolute paths to skip or delete (if delete_skipped)
         delete_skipped (bool): True to also delete skipped files
         stats_deleted_ok_value (multiprocessing.Value): counter of total successful delete calls
         stats_deleted_error_value (multiprocessing.Value): counter of total unsuccessful delete calls
@@ -101,7 +128,7 @@ def delete_files(
 
         # Retrieve from queue and exit process on timeout
         try:
-            tree_type, filepath_rel, root_skip_empty = output_tree_queue.get(block=True, timeout=QUEUE_TIMEOUT)
+            tree_type, filepath_rel, root_empty = output_tree_queue.get(block=True, timeout=QUEUE_TIMEOUT)
         except queue.Empty:
             if logging_queue is not None:
                 logging.info(f"No more files check and delete! delete_files() with PID {current_pid} exited")
@@ -109,17 +136,12 @@ def delete_files(
 
         try:
             # Parse data
-            root = root_skip_empty["root"]
-            skip = root_skip_empty["skip"]
+            root = root_empty["root"]
             empty = False
-            if "empty" in root_skip_empty:
-                empty = root_skip_empty["empty"]
+            if "empty" in root_empty:
+                empty = root_empty["empty"]
 
             # NOTE: if everything is ok, root here must be always the same an it must be backup directory
-
-            # Skip (if everything is ok, this should never happen)
-            if skip:
-                continue
 
             # Convert to absolute path
             out_filepath_abs = os.path.join(root, filepath_rel)
@@ -128,22 +150,23 @@ def delete_files(
             if not os.path.exists(out_filepath_abs):
                 continue
 
-            # Try to find this path inside input_tree and find out if need to delete it
+            # Will be false if we don't need to delete this file / dir
             delete_flag = True
-            if filepath_rel in input_tree[tree_type]:
-                skip_ = input_tree[tree_type][filepath_rel]["skip"]
-                if not skip_ or (skip_ and not delete_skipped):
-                    delete_flag = False
 
-            # Can not find file directly in input_tree -> try to find it's parent dir
-            else:
-                path_components = os.path.normpath(filepath_rel).split(os.path.sep)
-                if len(path_components) > 1:
-                    filepath_rel_root_dir = path_components[0].strip()
-                    if filepath_rel_root_dir in input_tree["dirs"]:
-                        skip_ = input_tree["dirs"][filepath_rel_root_dir]["skip"]
-                        if not skip_ or (skip_ and not delete_skipped):
-                            delete_flag = False
+            # Try to find this path inside skipped entries
+            in_skipped = False
+            filepath_rel_parts = os.path.normpath(filepath_rel).split(os.path.sep)
+            for skipped_path_abs in skipped_entries_abs:
+                skipped_path_abs_parts = os.path.normpath(skipped_path_abs).split(os.path.sep)
+                if is_path_relative_to(skipped_path_abs_parts, filepath_rel_parts):
+                    in_skipped = True
+                    break
+
+            # Try to find this path inside input_tree or check if it's in skipped entries
+            if in_skipped or filepath_rel in input_tree[tree_type]:
+                # Decide if need to delete this file
+                if not in_skipped or (in_skipped and not delete_skipped):
+                    delete_flag = False
 
             # Skip if we don't need to delete it
             if not delete_flag:
