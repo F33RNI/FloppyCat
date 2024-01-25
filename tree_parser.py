@@ -137,7 +137,7 @@ def tree_parser(
         while True:
             # Try to get next path
             try:
-                dir_or_file = next(parent_dir_abs_generator).is_symlink
+                dir_or_file = next(parent_dir_abs_generator)
 
             # No more paths -> exit
             except StopIteration:
