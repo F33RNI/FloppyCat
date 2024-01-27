@@ -527,34 +527,37 @@ class Backupper:
 
         # Add each entry
         for path_abs, skip in entries.items():
-            if os.path.isdir(path_abs):
-                # Extract root directory
-                root_dir = os.path.dirname(path_abs) if root_relative_to_dirname else path_abs
+            # Ignore path
+            if ignore_filepaths_abs and path_abs in ignore_filepaths_abs:
+                continue
 
+            # Skipped entry
+            if skip:
+                skipped_entries_abs.append(path_abs)
+                continue
+
+            # Extract root directory
+            root_dir = os.path.dirname(path_abs) if root_relative_to_dirname else path_abs
+
+            # Get path type
+            path_type = (
+                PATH_IS_FILE
+                if os.path.isfile(path_abs)
+                else (PATH_IS_DIR if os.path.isdir(path_abs) else PATH_UNKNOWN)
+            )
+
+            # Add to the output queue
+            # (relative path, root dir path, PATH_..., is empty directory)
+            parsed_queue.put((os.path.relpath(path_abs, root_dir), root_dir, path_type, False))
+
+            # Parse directories
+            if path_type == PATH_IS_DIR:
                 # Extract parent directory
                 parent_dir = os.path.relpath(path_abs, root_dir) if root_relative_to_dirname else ""
 
                 # Add to the recursion queue (parent dir, abs root path)
                 if not skip:
                     directories_to_parse_queue.put((parent_dir, root_dir))
-
-                # Add to the output queue / list of skipped entries
-                if not ignore_filepaths_abs or path_abs not in ignore_filepaths_abs:
-                    # Skipped entry
-                    if skip:
-                        skipped_entries_abs.append(path_abs)
-
-                    # Non-skipped entry
-                    else:
-                        # Get path type
-                        path_type = (
-                            PATH_IS_FILE
-                            if os.path.isfile(path_abs)
-                            else (PATH_IS_DIR if os.path.isdir(path_abs) else PATH_UNKNOWN)
-                        )
-
-                        # (relative path, root dir path, PATH_..., is empty directory)
-                        parsed_queue.put((os.path.relpath(path_abs, root_dir), root_dir, path_type, False))
 
         # Create control Value for pause and cancel
         control_value = multiprocessing.Value("i", PROCESS_CONTROL_WORK)
@@ -892,6 +895,11 @@ class Backupper:
             # Done
             logging.info("Filler thread finished")
 
+        # Parse skipped entries
+        skipped_entries_abs_parts = [
+            os.path.normpath(skipped_entry_abs).split(os.path.sep) for skipped_entry_abs in skipped_entries_abs
+        ]
+
         # Create control Value for pause and cancel
         control_value = multiprocessing.Value("i", PROCESS_CONTROL_WORK)
 
@@ -924,7 +932,7 @@ class Backupper:
                 args=(
                     output_tree_queue,
                     input_tree,
-                    skipped_entries_abs,
+                    skipped_entries_abs_parts,
                     self._config_manager.get_config("delete_skipped"),
                     self._stats_deleted_ok_value,
                     self._stats_deleted_error_value,

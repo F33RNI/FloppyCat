@@ -43,11 +43,12 @@ def is_path_relative_to(parent_path: List[str], child_path: List[str]) -> bool:
     """
     child_part_index = 0
     parent_part_last_match_index = -1
+    child_path_len = len(child_path)
     for i, parent_path_part in enumerate(parent_path):
         if parent_path_part == child_path[child_part_index]:
             child_part_index += 1
             parent_part_last_match_index = i
-            if child_part_index >= len(child_path):
+            if child_part_index >= child_path_len:
                 break
         else:
             child_part_index = 0
@@ -59,7 +60,7 @@ def is_path_relative_to(parent_path: List[str], child_path: List[str]) -> bool:
 def delete_files(
     output_tree_queue: multiprocessing.Queue,
     input_tree: Dict,
-    skipped_entries_abs: List[str],
+    skipped_entries_abs_parts: List[List[str]],
     delete_skipped: bool,
     stats_deleted_ok_value: multiprocessing.Value,
     stats_deleted_error_value: multiprocessing.Value,
@@ -71,7 +72,8 @@ def delete_files(
     Args:
         output_files_tree_queue (multiprocessing.Queue): output tree as Queue (tree_type, filepath_rel, root_empty)
         input_tree (Dict): tree of all input files and directories
-        skipped_entries_abs (List[str]): list of normalized absolute paths to skip or delete (if delete_skipped)
+        skipped_entries_abs_parts (List[List[str]]): list of normalized absolute paths to skip or delete
+        (if delete_skipped) splitted by os.path.sep
         delete_skipped (bool): True to also delete skipped files
         stats_deleted_ok_value (multiprocessing.Value): counter of total successful delete calls
         stats_deleted_error_value (multiprocessing.Value): counter of total unsuccessful delete calls
@@ -156,9 +158,8 @@ def delete_files(
             # Try to find this path inside skipped entries
             in_skipped = False
             filepath_rel_parts = os.path.normpath(filepath_rel).split(os.path.sep)
-            for skipped_path_abs in skipped_entries_abs:
-                skipped_path_abs_parts = os.path.normpath(skipped_path_abs).split(os.path.sep)
-                if is_path_relative_to(skipped_path_abs_parts, filepath_rel_parts):
+            for skipped_entry_abs_parts in skipped_entries_abs_parts:
+                if is_path_relative_to(skipped_entry_abs_parts, filepath_rel_parts):
                     in_skipped = True
                     break
 
