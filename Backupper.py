@@ -1640,6 +1640,10 @@ class Backupper:
             progress_counter = 0
             size_total_ = len(checksums_output)
             for filepath_rel, root_and_checksum in checksums_output.items():
+                # Ignore tree.txt
+                if filepath_rel == "tree.txt":
+                    continue
+
                 # Extract checksum
                 checksum = root_and_checksum["checksum"]
 
