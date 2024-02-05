@@ -1253,11 +1253,6 @@ class Backupper:
             # Update progress bar (no real progress here)
             self._update_progress_bar_status_bar(100, 100)
 
-            print(f"Input tree: {json.dumps(input_tree, indent=4)}")
-            print()
-            print(f"Output tree: {json.dumps(output_tree, indent=4)}")
-            print()
-
             #############################################
             # STAGE 2: Generate input entries checksums #
             #############################################
