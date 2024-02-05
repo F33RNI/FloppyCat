@@ -559,7 +559,7 @@ class _Window(QMainWindow):
         cb_skip.setToolTip("Skip file / directory from current backup")
 
         btn_remove = QPushButton()
-        btn_remove.setIcon(QIcon(get_resource_path(os.path.join("icons", "icons8-delete-24.png"))))
+        btn_remove.setIcon(QIcon(get_resource_path(os.path.join("icons", "icons8-close-24.png"))))
         btn_remove.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         btn_remove.setToolTip("Remove entry")
 
