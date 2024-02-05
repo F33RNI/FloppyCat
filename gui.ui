@@ -7,7 +7,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>474</width>
+    <width>519</width>
     <height>757</height>
    </rect>
   </property>
@@ -77,7 +77,7 @@
            <rect>
             <x>0</x>
             <y>0</y>
-            <width>448</width>
+            <width>493</width>
             <height>112</height>
            </rect>
           </property>
@@ -148,7 +148,7 @@
       <item>
        <widget class="QCheckBox" name="cb_follow_symlinks">
         <property name="toolTip">
-         <string>Follow symbolic links when parsing files</string>
+         <string>Follow symbolic links when parsing and copying files</string>
         </property>
         <property name="text">
          <string>Follow symlinks</string>
@@ -514,14 +514,7 @@
   </widget>
   <widget class="QStatusBar" name="statusbar">
    <property name="toolTip">
-    <string>S: Stage current / total stages
-Fv: Files Viewed
-Dv: Directories Viewed
-C: Checksums calculated, errors
-FDcp: Files and Directories copied, errors
-FDdel: Files and Directories deleted, errors
-Dcr: Directories created, errors
-Cvld: Checksums validated, mismatches, not exist</string>
+    <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;S: Stage current / total stages&lt;/p&gt;&lt;p&gt;Fv: Files Viewed&lt;/p&gt;&lt;p&gt;Dv: Directories Viewed&lt;/p&gt;&lt;p&gt;Sv: Symlinks Viewed&lt;/p&gt;&lt;p&gt;Uv: Unknown entries Viewed&lt;/p&gt;&lt;p&gt;C: Checksums calculated, errors&lt;/p&gt;&lt;p&gt;FDcp: Files and Directories copied, errors&lt;/p&gt;&lt;p&gt;FDdel: Files and Directories deleted, errors&lt;/p&gt;&lt;p&gt;Dcr: Directories created, errors&lt;/p&gt;&lt;p&gt;Scr: Symlinks created&lt;/p&gt;&lt;p&gt;Cvld: Checksums validated, mismatches, not exist&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
    </property>
   </widget>
  </widget>

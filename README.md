@@ -71,7 +71,7 @@ Result:
    3. The `🗑️` button will remove the current path from the input data (it will not be copied to the backup)
 4. Select output (backup) directory by pressing `Browse` button or type path manually near _Where to save backup:_
 5. Change settings if you need:
-   1. `Follow symlinks` - If set, during tree generation (before calculating checksums, deleting and copying files), symbolic links will be followed (if supported by the system) **_Default:_** `Unchecked`
+   1. `Follow symlinks` - If set, during tree generation (before calculating checksums) and while copying files symbolic links will be followed (if supported by the system). **Without this flag, symlinks will be created inside backup.** **_Default:_** `Unchecked`
    2. `Delete entries from backup according to input data` - If set, those files inside the existing backup that don't exist in the input paths will be deleted. **Without this flag, files from the backup will never be deleted.** **_Default:_** `Checked`
       1. `Delete skipped entries` - If set, files in skipped paths will also be deleted from the existing backup. Without this flag, if files exist even in the skipped paths, they will not be deleted. **_Default:_** `Unchecked`
    3. `Create empty directories` - If set, all empty folders in the input paths will also be created in the backup. **Without this flag, only non-empty directories will be copied.** **_Default:_** `Checked`

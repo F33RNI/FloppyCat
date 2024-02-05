@@ -15,6 +15,8 @@ See the GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License long with this program.
 If not, see <http://www.gnu.org/licenses/>.
 """
+
+import json
 import logging
 import multiprocessing
 import os
@@ -29,7 +31,7 @@ from PyQt5 import QtCore
 import ConfigManager
 from DisplayablePath import DisplayablePath
 
-from tree_parser import tree_parser, PATH_IS_FILE, PATH_IS_DIR, PATH_UNKNOWN
+from tree_parser import tree_parser, PATH_FILE, PATH_DIR, PATH_SYMLINK, PATH_UNKNOWN
 from checksums import parse_checksums_from_file, calculate_checksums
 from delete_files import delete_files
 from copy_entries import copy_entries
@@ -68,12 +70,15 @@ class Backupper:
         # Backup results
         self._stats_tree_parsed_dirs = multiprocessing.Value("i", 0)
         self._stats_tree_parsed_files = multiprocessing.Value("i", 0)
+        self._stats_tree_parsed_symlinks = multiprocessing.Value("i", 0)
+        self._stats_tree_parsed_unknown = multiprocessing.Value("i", 0)
         self._stats_checksums_calculate_ok_value = multiprocessing.Value("i", 0)
         self._stats_checksums_calculate_error_value = multiprocessing.Value("i", 0)
         self._stats_deleted_ok_value = multiprocessing.Value("i", 0)
         self._stats_deleted_error_value = multiprocessing.Value("i", 0)
         self._stats_created_dirs_ok_value = multiprocessing.Value("i", 0)
         self._stats_created_dirs_error_value = multiprocessing.Value("i", 0)
+        self._stats_created_symlinks_value = multiprocessing.Value("i", 0)
         self._stats_copied_ok_value = multiprocessing.Value("i", 0)
         self._stats_copied_error_value = multiprocessing.Value("i", 0)
 
@@ -86,12 +91,15 @@ class Backupper:
         """Resets all backup and validation statistics"""
         self._stats_tree_parsed_dirs.value = 0
         self._stats_tree_parsed_files.value = 0
+        self._stats_tree_parsed_symlinks.value = 0
+        self._stats_tree_parsed_unknown.value = 0
         self._stats_checksums_calculate_ok_value.value = 0
         self._stats_checksums_calculate_error_value.value = 0
         self._stats_deleted_ok_value.value = 0
         self._stats_deleted_error_value.value = 0
         self._stats_created_dirs_ok_value.value = 0
         self._stats_created_dirs_error_value.value = 0
+        self._stats_created_symlinks_value.value = 0
         self._stats_copied_ok_value.value = 0
         self._stats_copied_error_value.value = 0
         self._stats_validate_match.value = 0
@@ -109,9 +117,12 @@ class Backupper:
         stats += f"Files and directories deleted: {self._stats_deleted_ok_value.value}, "
         stats += f"errors: {self._stats_deleted_error_value.value}\n"
         stats += f"Directories created: {self._stats_created_dirs_ok_value.value}, "
-        stats += f"errors: {self._stats_created_dirs_error_value.value}\n\n"
+        stats += f"errors: {self._stats_created_dirs_error_value.value}\n"
+        stats += f"Symlinks created: {self._stats_created_symlinks_value.value}\n\n"
         stats += f"(Files viewed: {self._stats_tree_parsed_files.value}, "
-        stats += f"directories viewed: {self._stats_tree_parsed_dirs.value})\n"
+        stats += f"dirs: {self._stats_tree_parsed_dirs.value}, "
+        stats += f"symlinks: {self._stats_tree_parsed_symlinks.value}, "
+        stats += f"unknown: {self._stats_tree_parsed_unknown.value})\n"
         stats += f"(Checksums calculated: {self._stats_checksums_calculate_ok_value.value}, "
         stats += f"errors: {self._stats_checksums_calculate_error_value.value})\n\n"
         stats += "See logs for details"
@@ -136,7 +147,9 @@ class Backupper:
         stats += f"Mismatches: {self._stats_validate_not_match.value}\n"
         stats += f"Checksums not found: {self._stats_validate_not_exist.value}\n\n"
         stats += f"(Files viewed: {self._stats_tree_parsed_files.value}, "
-        stats += f"directories viewed: {self._stats_tree_parsed_dirs.value})\n"
+        stats += f"dirs: {self._stats_tree_parsed_dirs.value}, "
+        stats += f"symlinks: {self._stats_tree_parsed_symlinks.value}, "
+        stats += f"unknown: {self._stats_tree_parsed_unknown.value})\n"
         stats += f"(Checksums calculated: {self._stats_checksums_calculate_ok_value.value}, "
         stats += f"errors: {self._stats_checksums_calculate_error_value.value})\n\n"
         stats += "See logs for details"
@@ -154,6 +167,10 @@ class Backupper:
             stats += f"Fv: {self._stats_tree_parsed_files.value}  "
         with self._stats_tree_parsed_dirs.get_lock():
             stats += f"Dv: {self._stats_tree_parsed_dirs.value}  "
+        with self._stats_tree_parsed_symlinks.get_lock():
+            stats += f"Sv: {self._stats_tree_parsed_symlinks.value}  "
+        with self._stats_tree_parsed_unknown.get_lock():
+            stats += f"Uv: {self._stats_tree_parsed_unknown.value}  "
 
         with self._stats_checksums_calculate_ok_value.get_lock():
             stats += f"C: {self._stats_checksums_calculate_ok_value.value}, "
@@ -174,6 +191,9 @@ class Backupper:
             stats += f"Dcr: {self._stats_created_dirs_ok_value.value}, "
         with self._stats_created_dirs_error_value.get_lock():
             stats += f"{self._stats_created_dirs_error_value.value}  "
+
+        with self._stats_created_symlinks_value.get_lock():
+            stats += f"Scr: {self._stats_created_symlinks_value.value}  "
 
         with self._stats_validate_match.get_lock():
             stats += f"Cvld: {self._stats_validate_match.value}, "
@@ -477,9 +497,12 @@ class Backupper:
         return -1
 
     def _generate_tree(
-        self, entries: Dict, root_relative_to_dirname: bool = False, ignore_filepaths_abs: List or None = None
+        self,
+        entries: Dict,
+        follow_symlinks: bool = False,
+        root_relative_to_dirname: bool = False,
     ) -> Tuple[Dict, List[str]] or int:
-        """Parses entries and generates dict of files and dirs with the following structure using multiprocessing:
+        """Parses entries and generates dict of files, dirs and symlinks with the following structure:
         ({
             "files": {
                 "file_1_relative_to_root_path": {
@@ -499,6 +522,11 @@ class Backupper:
                     "empty": True
                 }
             },
+            "symlinks": {
+                "file_1_symlink": {
+                    "root": "symlink_1_root_directory"
+                }
+            }
             "unknown": {
                 "this_path_is_wrong_or_does_not_exists": {
                     "root": "path_1_root_directory"
@@ -508,8 +536,8 @@ class Backupper:
 
         Args:
             entries (Dict): {"path": skip} ex. {"path_1": True, "path_2": False, ...}
+            follow_symlinks (bool): True to follow symlinks instead of adding them to the "symlinks" tree
             root_relative_to_dirname (bool): True to calculate path relative to dirname(root_dir) instead of root_dir
-            ignore_filepaths_abs (List, optional): list of absolute filepaths to exclude from tree. Defaults to None.
 
         Returns:
             Tuple[Dict, List[str]] or int: parsed tree and skipped entries or exit status in case of cancel
@@ -527,10 +555,6 @@ class Backupper:
 
         # Add each entry
         for path_abs, skip in entries.items():
-            # Ignore path
-            if ignore_filepaths_abs and path_abs in ignore_filepaths_abs:
-                continue
-
             # Skipped entry
             if skip:
                 skipped_entries_abs.append(path_abs)
@@ -540,18 +564,21 @@ class Backupper:
             root_dir = os.path.dirname(path_abs) if root_relative_to_dirname else path_abs
 
             # Get path type
-            path_type = (
-                PATH_IS_FILE
-                if os.path.isfile(path_abs)
-                else (PATH_IS_DIR if os.path.isdir(path_abs) else PATH_UNKNOWN)
-            )
+            path_type = PATH_UNKNOWN
+            if os.path.islink(path_abs) and not follow_symlinks:
+                path_type = PATH_SYMLINK
+            elif os.path.isfile(path_abs):
+                path_type = PATH_FILE
+            elif os.path.isdir(path_abs):
+                path_type = PATH_DIR
 
-            # Add to the output queue
+            # Add to the output queue if not self
             # (relative path, root dir path, PATH_..., is empty directory)
-            parsed_queue.put((os.path.relpath(path_abs, root_dir), root_dir, path_type, False))
+            if root_relative_to_dirname:
+                parsed_queue.put((os.path.relpath(path_abs, root_dir), root_dir, path_type, False))
 
-            # Parse directories
-            if path_type == PATH_IS_DIR:
+            # Parse tree if it's a directory
+            if path_type == PATH_DIR:
                 # Extract parent directory
                 parent_dir = os.path.relpath(path_abs, root_dir) if root_relative_to_dirname else ""
 
@@ -563,7 +590,7 @@ class Backupper:
         control_value = multiprocessing.Value("i", PROCESS_CONTROL_WORK)
 
         # Output data
-        tree = {"files": {}, "dirs": {}, "unknown": {}}
+        tree = {"files": {}, "dirs": {}, "symlinks": {}, "unknown": {}}
 
         # Start processes
         processes_num = self.get_max_cpu_numbers()
@@ -575,9 +602,11 @@ class Backupper:
                     directories_to_parse_queue,
                     parsed_queue,
                     skipped_entries_abs,
-                    self._config_manager.get_config("follow_symlinks"),
+                    follow_symlinks,
                     self._stats_tree_parsed_dirs,
                     self._stats_tree_parsed_files,
+                    self._stats_tree_parsed_symlinks,
+                    self._stats_tree_parsed_unknown,
                     control_value,
                     self._logging_queue,
                 ),
@@ -604,15 +633,13 @@ class Backupper:
                     # Convert to absolute path
                     path_abs = os.path.join(root_dir, path_rel)
 
-                    # Check if we need to exclude it
-                    if ignore_filepaths_abs and path_abs in ignore_filepaths_abs:
-                        continue
-
                     # Put into tree
-                    if path_type is PATH_IS_FILE:
+                    if path_type is PATH_FILE:
                         tree["files"][path_rel] = {"root": root_dir}
-                    elif path_type is PATH_IS_DIR:
+                    elif path_type is PATH_DIR:
                         tree["dirs"][path_rel] = {"root": root_dir, "empty": is_empty}
+                    elif path_type is PATH_SYMLINK:
+                        tree["symlinks"][path_rel] = {"root": root_dir}
                     else:
                         tree["unknown"][path_rel] = {"root": root_dir}
                 except queue.Empty:
@@ -875,7 +902,12 @@ class Backupper:
             logging.info("Filler thread started")
             update_progress_timer_ = time.time()
             progress_counter = 0
-            size_total_ = len(output_tree_["files"]) + len(output_tree_["dirs"]) + len(output_tree_["unknown"])
+            size_total_ = (
+                len(output_tree_["files"])
+                + len(output_tree_["dirs"])
+                + len(output_tree_["symlinks"])
+                + len(output_tree_["unknown"])
+            )
             for tree_type_, local_tree_ in output_tree_.items():
                 for path_relative_, root_and_empty_ in local_tree_.items():
                     # Check if we need to exit
@@ -904,7 +936,10 @@ class Backupper:
         control_value = multiprocessing.Value("i", PROCESS_CONTROL_WORK)
 
         # Calculate number of processes
-        processes_num = min(len(output_tree["files"]), self.get_max_cpu_numbers())
+        processes_num = min(
+            max(len(output_tree["files"]), len(output_tree["dirs"]), len(output_tree["symlinks"])),
+            self.get_max_cpu_numbers(),
+        )
 
         # Calculate output_tree_queue size as 10 files per process (seems enough for me ¯\_(ツ)_/¯)
         output_tree_queue_size = processes_num * 10
@@ -971,7 +1006,7 @@ class Backupper:
 
     def _copy_entries(
         self,
-        input_files_tree: Dict,
+        input_tree: Dict,
         checksums_input: Dict,
         checksums_output: Dict,
         output_dir: str,
@@ -979,7 +1014,7 @@ class Backupper:
         """Copies input entries to output directory based on checksums
 
         Args:
-            input_files_tree (Dict): "files" dictionary of all input files (see docs above for more info)
+            input_tree (Dict): tree containing "files" and "symlinks" (see docs above for more info)
             checksums_input (Dict): checksums of input files
             checksums_output (Dict): checksums of output files
             output_dir (str): path to the output (backup) directory
@@ -989,38 +1024,41 @@ class Backupper:
         """
 
         def _files_tree_queue_filler(
-            files_tree_: Dict,
+            input_tree_: Dict,
             filepaths_queue_: multiprocessing.Queue,
             exit_flag_: Dict,
         ) -> None:
             """Thread body that dynamically puts files from files_tree_ into filepaths_queue_
 
             Args:
-                files_tree_ (Dict): dict of "files" of tree to calculate checksum
+                input_tree_ (Dict): tree containing "files" and "symlinks" (see docs above for more info)
                 filepaths_queue_ (multiprocessing.Queue): queue of file paths as tuples (root dir, local path)
                 exit_flag_ (Dict): {"exit": False}
             """
             logging.info("Filler thread started")
             update_progress_timer_ = time.time()
             progress_counter = 0
-            size_total_ = len(files_tree_)
-            for path_relative_, root_ in files_tree_.items():
-                # Check if we need to exit
-                if exit_flag_["exit"]:
-                    break
+            size_total_ = len(input_tree_["files"]) + len(input_tree_["symlinks"])
+            for tree_type_, local_tree_ in input_tree_.items():
+                if tree_type_ != "files" and tree_type_ != "symlinks":
+                    continue
+                for path_relative_, root_ in local_tree_.items():
+                    # Check if we need to exit
+                    if exit_flag_["exit"]:
+                        break
 
-                # Extract root dir
-                root_ = root_["root"]
+                    # Extract root dir
+                    root_ = root_["root"]
 
-                # Put in the queue as (relative path, root dir)
-                filepaths_queue_.put((path_relative_, root_), block=True)
+                    # Put in the queue as (relative path, root dir)
+                    filepaths_queue_.put((path_relative_, root_), block=True)
 
-                # Increment items counter
-                progress_counter += 1
+                    # Increment items counter
+                    progress_counter += 1
 
-                # Update progress every 100ms
-                if time.time() - update_progress_timer_ >= 0.1:
-                    self._update_progress_bar_status_bar(progress_counter, size_total_)
+                    # Update progress every 100ms
+                    if time.time() - update_progress_timer_ >= 0.1:
+                        self._update_progress_bar_status_bar(progress_counter, size_total_)
 
             # Done
             logging.info("Filler thread finished")
@@ -1029,7 +1067,7 @@ class Backupper:
         control_value = multiprocessing.Value("i", PROCESS_CONTROL_WORK)
 
         # Calculate number of processes
-        processes_num = min(len(input_files_tree), self.get_max_cpu_numbers())
+        processes_num = min(max(len(input_tree["files"]), len(input_tree["symlinks"])), self.get_max_cpu_numbers())
 
         # Calculate filepaths_queue size as 10 files per process (seems enough for me ¯\_(ツ)_/¯)
         filepaths_queue_size = processes_num * 10
@@ -1043,7 +1081,7 @@ class Backupper:
         threading.Thread(
             target=_files_tree_queue_filler,
             args=(
-                input_files_tree,
+                input_tree,
                 filepaths_queue,
                 filler_exit_flag,
             ),
@@ -1059,10 +1097,12 @@ class Backupper:
                     checksums_input,
                     checksums_output,
                     output_dir,
+                    self._config_manager.get_config("follow_symlinks"),
                     self._stats_copied_ok_value,
                     self._stats_copied_error_value,
                     self._stats_created_dirs_ok_value,
                     self._stats_created_dirs_error_value,
+                    self._stats_created_symlinks_value,
                     control_value,
                     self._logging_queue,
                 ),
@@ -1167,7 +1207,11 @@ class Backupper:
 
             # Parse input_entries and extract all files and dirs
             logging.info("Generating input entries tree")
-            input_tree = self._generate_tree(input_entries, root_relative_to_dirname=True)
+            input_tree = self._generate_tree(
+                input_entries,
+                follow_symlinks=self._config_manager.get_config("follow_symlinks"),
+                root_relative_to_dirname=True,
+            )
 
             # Exit ?
             if isinstance(input_tree, int):
@@ -1180,6 +1224,7 @@ class Backupper:
             logging.info(
                 f"Files: {len(input_tree['files'])}, "
                 f"dirs: {len(input_tree['dirs'])}, "
+                f"symlinks: {len(input_tree['symlinks'])}, "
                 f"unknown paths: {len(input_tree['unknown'])}"
             )
 
@@ -1188,7 +1233,7 @@ class Backupper:
 
             # Extract all existing files inside backup (output_directory)
             logging.info("Generating output (existing files) tree")
-            output_tree = self._generate_tree({output_dir: False}, ignore_filepaths_abs=[output_dir])
+            output_tree = self._generate_tree({output_dir: False})
 
             # Exit ?
             if isinstance(output_tree, int):
@@ -1201,11 +1246,17 @@ class Backupper:
             logging.info(
                 f"Files: {len(output_tree['files'])}, "
                 f"dirs: {len(output_tree['dirs'])}, "
+                f"symlinks: {len(output_tree['symlinks'])}, "
                 f"unknown paths: {len(output_tree['unknown'])}"
             )
 
             # Update progress bar (no real progress here)
             self._update_progress_bar_status_bar(100, 100)
+
+            print(f"Input tree: {json.dumps(input_tree, indent=4)}")
+            print()
+            print(f"Output tree: {json.dumps(output_tree, indent=4)}")
+            print()
 
             #############################################
             # STAGE 2: Generate input entries checksums #
@@ -1348,7 +1399,7 @@ class Backupper:
             logging.info(f"STAGE {self._stage_current} / {self._stages_total}: Copying files")
 
             copy_entries_exit_code = self._copy_entries(
-                input_tree["files"],
+                input_tree,
                 checksums_input,
                 checksums_output,
                 output_dir,
@@ -1373,7 +1424,7 @@ class Backupper:
             if self._config_manager.get_config("recalculate_checksum"):
                 # Extract all existing files / directories inside backup (output_directory) again
                 logging.info("Generating output (existing files) tree again")
-                output_tree = self._generate_tree({output_dir: False}, ignore_filepaths_abs=[output_dir])
+                output_tree = self._generate_tree({output_dir: False})
 
                 # Exit ?
                 if isinstance(output_tree, int):
@@ -1548,7 +1599,7 @@ class Backupper:
 
             # Extract all existing files inside backup (output_directory)
             logging.info("Generating output (existing files) tree")
-            output_tree = self._generate_tree({output_dir: False}, ignore_filepaths_abs=[output_dir])
+            output_tree = self._generate_tree({output_dir: False})
 
             # Exit ?
             if isinstance(output_tree, int):

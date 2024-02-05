@@ -15,6 +15,7 @@ See the GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License long with this program.
 If not, see <http://www.gnu.org/licenses/>.
 """
+
 import logging
 import multiprocessing
 import os
@@ -31,9 +32,10 @@ from _control_values import PROCESS_CONTROL_WORK, PROCESS_CONTROL_PAUSE, PROCESS
 QUEUE_TIMEOUT = 2
 
 # Definitions for parsed_queue
-PATH_IS_FILE = 0
-PATH_IS_DIR = 1
-PATH_UNKNOWN = 2
+PATH_FILE = 0
+PATH_DIR = 1
+PATH_SYMLINK = 2
+PATH_UNKNOWN = 3
 
 
 def tree_parser(
@@ -43,6 +45,8 @@ def tree_parser(
     follow_symlinks: bool,
     stats_tree_parsed_dirs: multiprocessing.Value,
     stats_tree_parsed_files: multiprocessing.Value,
+    stats_tree_parsed_symlinks: multiprocessing.Value,
+    stats_tree_parsed_unknown: multiprocessing.Value,
     control_value: multiprocessing.Value or None = None,
     logging_queue: multiprocessing.Queue or None = None,
 ) -> None:
@@ -59,6 +63,8 @@ def tree_parser(
         follow_symlinks (bool): True to follow symlinks, false to ignore them
         stats_tree_parsed_dirs (multiprocessing.Value): counter of total successfully parsed directories
         stats_tree_parsed_files (multiprocessing.Value): counter of total successfully parsed files
+        stats_tree_parsed_symlinks (multiprocessing.Value): counter of total successfully parsed symlinks
+        stats_tree_parsed_unknown (multiprocessing.Value): counter of total parsed unknown entries
         control_value (multiprocessing.Value or None, optional): value (int) to pause / cancel process
         logging_queue (multiprocessing.Queue or None, optional): logging queue to accept logs
     """
@@ -151,10 +157,6 @@ def tree_parser(
 
             # Parse it
             try:
-                # Ignore symlinks
-                if dir_or_file.is_symlink() and not follow_symlinks:
-                    continue
-
                 # Ignore if found in skipped paths
                 if os.path.normpath(str(dir_or_file)) in skipped_entries_abs:
                     continue
@@ -162,10 +164,20 @@ def tree_parser(
                 # Find path relative to root
                 dir_or_file_rel = os.path.relpath(dir_or_file, root_dir)
 
-                # Just file -> put to parsed queue
-                if dir_or_file.is_file():
+                # Increment symlinks counter
+                if dir_or_file.is_symlink():
+                    with stats_tree_parsed_symlinks.get_lock():
+                        stats_tree_parsed_symlinks.value += 1
+
+                # Symlink and not follow it -> just parse as symlink
+                if dir_or_file.is_symlink() and not follow_symlinks:
                     # (relative path, root dir path, PATH_..., is empty directory)
-                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_IS_FILE, False))
+                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_SYMLINK, False))
+
+                # Just file -> put to parsed queue
+                elif dir_or_file.is_file():
+                    # (relative path, root dir path, PATH_..., is empty directory)
+                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_FILE, False))
 
                     # Increment counter
                     with stats_tree_parsed_files.get_lock():
@@ -180,7 +192,7 @@ def tree_parser(
                         is_empty = False
 
                     # (relative path, root dir path, PATH_..., is empty directory)
-                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_IS_DIR, is_empty))
+                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_DIR, is_empty))
 
                     # Put again in recursion if not empty with the same root
                     if not is_empty:
@@ -195,9 +207,9 @@ def tree_parser(
                     # (relative path, root dir path, PATH_..., is empty directory)
                     parsed_queue.put((dir_or_file_rel, root_dir, PATH_UNKNOWN, False))
 
-                    # Increment files counter ¯\_(ツ)_/¯
-                    with stats_tree_parsed_files.get_lock():
-                        stats_tree_parsed_files.value += 1
+                    # Increment unknown counter
+                    with stats_tree_parsed_unknown.get_lock():
+                        stats_tree_parsed_unknown.value += 1
 
             # Error occurred -> log error
             except Exception as e:

@@ -503,6 +503,7 @@ class _Window(QMainWindow):
         self.groupBox_3.setEnabled(enabled)
         self.le_save_to.setEnabled(enabled)
         self.btn_save_to_browse.setEnabled(enabled)
+        self.cb_follow_symlinks.setEnabled(enabled)
         self.cb_delete_data.setEnabled(enabled)
         self.cb_delete_skipped.setEnabled(self._config_manager.get_config("delete_data") if enabled else False)
         self.cb_create_empty_dirs.setEnabled(enabled)

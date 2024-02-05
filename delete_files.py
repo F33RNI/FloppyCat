@@ -15,6 +15,7 @@ See the GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License long with this program.
 If not, see <http://www.gnu.org/licenses/>.
 """
+
 import logging
 import multiprocessing
 import os
@@ -173,8 +174,14 @@ def delete_files(
             if not delete_flag:
                 continue
 
+            # Remove only link. If everything is ok, this must me 3rd. But it's here just in case
+            if os.path.islink(out_filepath_abs):
+                os.unlink(out_filepath_abs)
+                with stats_deleted_ok_value.get_lock():
+                    stats_deleted_ok_value.value += 1
+
             # Must be 1st
-            if tree_type == "files":
+            elif tree_type == "files":
                 # Delete as file
                 os.remove(out_filepath_abs)
                 with stats_deleted_ok_value.get_lock():
@@ -201,8 +208,8 @@ def delete_files(
                     with stats_deleted_ok_value.get_lock():
                         stats_deleted_ok_value.value += 1
 
-            # "unknown" Must be 3rd
-            # Idk what exactly we should do here, so first we delete it as a file and then as a directory
+            # "unknown" Must be 4th
+            # firstly we're trying to delete it as a file and then as a directory
             else:
                 deleted = False
 

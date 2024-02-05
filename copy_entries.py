@@ -15,6 +15,7 @@ See the GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License long with this program.
 If not, see <http://www.gnu.org/licenses/>.
 """
+
 import logging
 import multiprocessing
 import os
@@ -36,17 +37,20 @@ def copy_entries(
     checksums_input: Dict,
     checksums_output: Dict,
     output_dir: str,
+    follow_symlinks: bool,
     stats_copied_ok_value: multiprocessing.Value,
     stats_copied_error_value: multiprocessing.Value,
     stats_created_dirs_ok_value: multiprocessing.Value,
     stats_created_dirs_error_value: multiprocessing.Value,
+    stats_created_symlinks_value: multiprocessing.Value,
     control_value: multiprocessing.Value or None = None,
     logging_queue: multiprocessing.Queue or None = None,
 ) -> None:
     """Process body to copy input files and directories to the backup output_dir
 
     Args:
-        filepaths_queue (multiprocessing.Queue): queue of non-skipped files to to copy (path relative to root, root dir)
+        filepaths_queue (multiprocessing.Queue): queue of non-skipped files and symlink to to copy
+        (path relative to root, root dir)
         checksums_input (Dict): checksums of input files
         checksums_output (Dict): checksums of output files
         {
@@ -60,10 +64,12 @@ def copy_entries(
             }
         }
         output_dir (str): path to the output (backup) directory
+        follow_symlinks (bool): False to copy symlinks themselves instead of referenced files
         stats_copied_ok_value (multiprocessing.Value): counter of total successful copy calls
         stats_copied_error_value (multiprocessing.Value): counter of total unsuccessful copy calls
         stats_created_dirs_ok_value (multiprocessing.Value): counter of total successful mkdirs calls
         stats_created_dirs_error_value (multiprocessing.Value): counter of total unsuccessful mkdirs calls
+        stats_created_symlinks_value (multiprocessing.Value): counter of total created symlinks
         control_value (multiprocessing.Value or None, optional): value (int) to pause / cancel process
         logging_queue (multiprocessing.Queue or None, optional): logging queue to accept logs
     """
@@ -136,20 +142,21 @@ def copy_entries(
             if filepath_rel in checksums_input:
                 checksum_input = checksums_input[filepath_rel]["checksum"]
 
-            # Raise an error if no input checksum
-            if not checksum_input:
-                raise Exception(f"No checksum was calculated for {checksum_input}")
-
-            # Generate output absolute path
-            output_path_abs = os.path.join(output_dir, filepath_rel)
-
             # Find output checksum
             checksum_output = None
             if filepath_rel in checksums_output:
                 checksum_output = checksums_output[filepath_rel]["checksum"]
 
+            # Generate output absolute path
+            output_path_abs = os.path.join(output_dir, filepath_rel)
+
             # Skip if file exists and checksums are equal
-            if os.path.exists(output_path_abs) and checksum_output and checksum_output == checksum_input:
+            if (
+                os.path.exists(output_path_abs)
+                and checksum_input
+                and checksum_output
+                and checksum_output == checksum_input
+            ):
                 continue
 
             # Try to create directories if not exist
@@ -172,10 +179,28 @@ def copy_entries(
                         stats_created_dirs_error_value.value += 1
                     continue
 
+            # Copy symlink (create a new one)
+            if not follow_symlinks and os.path.islink(input_file_abs):
+                link_to = os.readlink(input_file_abs)
+
+                # Ignore if already exists
+                if (
+                    os.path.exists(output_path_abs)
+                    and os.path.islink(output_path_abs)
+                    and os.readlink(output_path_abs) == link_to
+                ):
+                    continue
+
+                # Create symlink
+                os.symlink(link_to, output_path_abs)
+                with stats_created_symlinks_value.get_lock():
+                    stats_created_symlinks_value.value += 1
+
             # Copy file
-            shutil.copy(input_file_abs, output_path_abs)
-            with stats_copied_ok_value.get_lock():
-                stats_copied_ok_value.value += 1
+            else:
+                shutil.copy(input_file_abs, output_path_abs, follow_symlinks=follow_symlinks)
+                with stats_copied_ok_value.get_lock():
+                    stats_copied_ok_value.value += 1
 
         # Error occurred -> log error and increment error counter
         except Exception as e:
