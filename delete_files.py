@@ -174,20 +174,20 @@ def delete_files(
             if not delete_flag:
                 continue
 
-            # Remove only link. If everything is ok, this must me 3rd. But it's here just in case
+            # Remove only link. If everything is ok, this must me 1st
             if os.path.islink(out_filepath_abs):
                 os.unlink(out_filepath_abs)
                 with stats_deleted_ok_value.get_lock():
                     stats_deleted_ok_value.value += 1
 
-            # Must be 1st
+            # Must be 3st
             elif tree_type == "files":
                 # Delete as file
                 os.remove(out_filepath_abs)
                 with stats_deleted_ok_value.get_lock():
                     stats_deleted_ok_value.value += 1
 
-            # Must be 2nd
+            # Must be 4th
             elif tree_type == "dirs":
                 # Delete itself because it's empty
                 if empty:
@@ -208,7 +208,7 @@ def delete_files(
                     with stats_deleted_ok_value.get_lock():
                         stats_deleted_ok_value.value += 1
 
-            # "unknown" Must be 4th
+            # "unknown" Must be 2nd
             # firstly we're trying to delete it as a file and then as a directory
             else:
                 deleted = False

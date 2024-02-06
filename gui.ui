@@ -7,8 +7,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>519</width>
-    <height>757</height>
+    <width>547</width>
+    <height>775</height>
    </rect>
   </property>
   <property name="font">
@@ -21,7 +21,7 @@
    <string>FloppyCat Simple Backup Utility</string>
   </property>
   <property name="toolTip">
-   <string/>
+   <string>How much time has passed since the start of backup / validation</string>
   </property>
   <property name="layoutDirection">
    <enum>Qt::LeftToRight</enum>
@@ -29,7 +29,7 @@
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout">
     <property name="spacing">
-     <number>9</number>
+     <number>6</number>
     </property>
     <property name="leftMargin">
      <number>9</number>
@@ -77,8 +77,8 @@
            <rect>
             <x>0</x>
             <y>0</y>
-            <width>493</width>
-            <height>112</height>
+            <width>521</width>
+            <height>135</height>
            </rect>
           </property>
           <layout class="QVBoxLayout" name="verticalLayout_3">
@@ -148,7 +148,7 @@
       <item>
        <widget class="QCheckBox" name="cb_follow_symlinks">
         <property name="toolTip">
-         <string>Follow symbolic links when parsing and copying files</string>
+         <string>Follow symlinks when parsing and copying files (if not set, symlinks will be copied as is)</string>
         </property>
         <property name="text">
          <string>Follow symlinks</string>
@@ -501,6 +501,69 @@
      </widget>
     </item>
     <item>
+     <layout class="QHBoxLayout" name="horizontalLayout_12">
+      <item>
+       <widget class="QLabel" name="label_3">
+        <property name="text">
+         <string>Time passed:</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="lb_time_passed">
+        <property name="toolTip">
+         <string>How much time has passed since the start of backup / validation</string>
+        </property>
+        <property name="text">
+         <string>00:00:00</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="horizontalSpacer_11">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_5">
+        <property name="toolTip">
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;How much time is left (approximately) &lt;span style=&quot; font-weight:600;&quot;&gt;stage | total&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        </property>
+        <property name="layoutDirection">
+         <enum>Qt::LeftToRight</enum>
+        </property>
+        <property name="text">
+         <string>Time left: ~</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="lb_time_left">
+        <property name="toolTip">
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;How much time is left (approximately) &lt;span style=&quot; font-weight:600;&quot;&gt;stage | total&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        </property>
+        <property name="text">
+         <string>00:00:00 | 00:00:00</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
      <widget class="QProgressBar" name="pb_backup">
       <property name="toolTip">
        <string>Backup progress</string>
@@ -514,7 +577,7 @@
   </widget>
   <widget class="QStatusBar" name="statusbar">
    <property name="toolTip">
-    <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;S: Stage current / total stages&lt;/p&gt;&lt;p&gt;Fv: Files Viewed&lt;/p&gt;&lt;p&gt;Dv: Directories Viewed&lt;/p&gt;&lt;p&gt;Sv: Symlinks Viewed&lt;/p&gt;&lt;p&gt;Uv: Unknown entries Viewed&lt;/p&gt;&lt;p&gt;C: Checksums calculated, errors&lt;/p&gt;&lt;p&gt;FDcp: Files and Directories copied, errors&lt;/p&gt;&lt;p&gt;FDdel: Files and Directories deleted, errors&lt;/p&gt;&lt;p&gt;Dcr: Directories created, errors&lt;/p&gt;&lt;p&gt;Scr: Symlinks created&lt;/p&gt;&lt;p&gt;Cvld: Checksums validated, mismatches, not exist&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+    <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;S:&lt;/span&gt; Stage current / total stages&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Fv:&lt;/span&gt; Files viewed&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Dv:&lt;/span&gt; Directories viewed&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Sv:&lt;/span&gt; Symlinks viewed&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Uv:&lt;/span&gt; Unknown entries viewed&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;C:&lt;/span&gt; Checksums calculated, errors&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;cp:&lt;/span&gt; Files and Directories copied, errors&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;del:&lt;/span&gt; Files and Directories deleted, errors&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Dcr:&lt;/span&gt; Directories created, errors&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Scr: &lt;/span&gt;Symlinks created&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Cvld:&lt;/span&gt; Checksums validated, mismatches, not exist&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
    </property>
   </widget>
  </widget>

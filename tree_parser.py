@@ -204,6 +204,9 @@ def tree_parser(
 
                 # Not a file or directory -> put to parsed queue as PATH_UNKNOWN
                 else:
+                    # Log it
+                    logging.warning(f"'{dir_or_file}' is not a symbolic link, file or directory")
+
                     # (relative path, root dir path, PATH_..., is empty directory)
                     parsed_queue.put((dir_or_file_rel, root_dir, PATH_UNKNOWN, False))
 

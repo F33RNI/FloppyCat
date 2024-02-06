@@ -15,6 +15,7 @@ See the GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License long with this program.
 If not, see <http://www.gnu.org/licenses/>.
 """
+
 import ctypes
 import logging
 import multiprocessing
@@ -57,6 +58,8 @@ FONT = get_resource_path(os.path.join("fonts", "W95FA.otf"))
 
 
 class _Window(QMainWindow):
+    time_passed_signal = QtCore.pyqtSignal(str)
+    time_left_signal = QtCore.pyqtSignal(str)
     progress_set_value_signal = QtCore.pyqtSignal(int)
     statusbar_show_message_signal = QtCore.pyqtSignal(str)
     logs_append_signal = QtCore.pyqtSignal(str)
@@ -127,6 +130,8 @@ class _Window(QMainWindow):
         # self.pte_logs.setFont(QFont(QFontDatabase.systemFont(QFontDatabase.FixedFont)))
 
         # Connect signals
+        self.time_passed_signal.connect(self.lb_time_passed.setText)
+        self.time_left_signal.connect(self.lb_time_left.setText)
         self.progress_set_value_signal.connect(self.pb_backup.setValue)
         self.statusbar_show_message_signal.connect(self.statusbar.showMessage)
         self.logs_append_signal.connect(self.pte_logs.appendPlainText)
@@ -280,6 +285,8 @@ class _Window(QMainWindow):
                         args=(
                             input_entries,
                             output_dir,
+                            self.time_passed_signal,
+                            self.time_left_signal,
                             self.progress_set_value_signal,
                             self.statusbar_show_message_signal,
                             self.backup_paused_resumed_signal,
@@ -357,6 +364,8 @@ class _Window(QMainWindow):
                         target=self._backupper.validate,
                         args=(
                             output_dir,
+                            self.time_passed_signal,
+                            self.time_left_signal,
                             self.progress_set_value_signal,
                             self.statusbar_show_message_signal,
                             self.validation_finished_signal,

@@ -16,7 +16,7 @@ You should have received a copy of the GNU Affero General Public License long wi
 If not, see <http://www.gnu.org/licenses/>.
 """
 
-import json
+from datetime import datetime, timedelta
 import logging
 import multiprocessing
 import os
@@ -37,11 +37,18 @@ from delete_files import delete_files
 from copy_entries import copy_entries
 from _control_values import PROCESS_CONTROL_WORK, PROCESS_CONTROL_PAUSE, PROCESS_CONTROL_EXIT
 
+# Filter to smooth left time
+TIME_LEFT_FILTER = 0.99998
 
 # States after backup / validation finished
 EXIT_CODE_SUCCESSFULLY = 0
 EXIT_CODE_ERROR = 1
 EXIT_CODE_CANCELED = 2
+
+# Mode definitions
+MODE_IDLE = 0
+MODE_BACKUP = 1
+MODE_VALIDATION = 2
 
 
 class Backupper:
@@ -57,11 +64,25 @@ class Backupper:
         # Current state
         self.paused = False
 
+        # Current mode
+        self.mode_current = MODE_IDLE
+
+        # Time calculation of backup/validation
+        self._time_started = 0.0
+        self._time_passed_prev = 0.0
+        self._progress_total_prev = 0.0
+        self._progress_steps_prev = 0.0
+        self._time_left_stage_filtered = 0.0
+        self._time_left_total_filtered = 0.0
+        self._time_passed_str = "00:00:00"
+
         # Stages counters for progress
         self._stage_current = 0
         self._stages_total = 0
 
         # PyQt signals
+        self._time_passed_signal = None
+        self._time_left_signal = None
         self._progress_set_value_signal = None
         self._statusbar_show_message_signal = None
         self._backup_paused_resumed_signal = None
@@ -112,7 +133,8 @@ class Backupper:
         Returns:
             str: backup statistics as multiline str
         """
-        stats = f"Files and directories copied: {self._stats_copied_ok_value.value}, "
+        stats = f"Time passed: {self._time_passed_str}\n\n"
+        stats += f"Files and directories copied: {self._stats_copied_ok_value.value}, "
         stats += f"errors: {self._stats_copied_error_value.value}\n"
         stats += f"Files and directories deleted: {self._stats_deleted_ok_value.value}, "
         stats += f"errors: {self._stats_deleted_error_value.value}\n"
@@ -134,15 +156,16 @@ class Backupper:
         Returns:
             str: validation statistics as multiline str
         """
+        stats = f"Time passed: {self._time_passed_str}\n\n"
         if (self._stats_validate_match.value + self._stats_validate_not_match.value) != 0:
             invalid_rate = (
                 self._stats_validate_not_match.value
                 / (self._stats_validate_match.value + self._stats_validate_not_match.value)
                 * 100
             )
-            stats = f"Error rate: {invalid_rate:.2f}%\n"
+            stats += f"Error rate: {invalid_rate:.2f}%\n"
         else:
-            stats = ""
+            stats += ""
         stats += f"Matches: {self._stats_validate_match.value}\n"
         stats += f"Mismatches: {self._stats_validate_not_match.value}\n"
         stats += f"Checksums not found: {self._stats_validate_not_exist.value}\n\n"
@@ -177,30 +200,34 @@ class Backupper:
         with self._stats_checksums_calculate_error_value.get_lock():
             stats += f"{self._stats_checksums_calculate_error_value.value}  "
 
-        with self._stats_copied_ok_value.get_lock():
-            stats += f"FDcp: {self._stats_copied_ok_value.value}, "
-        with self._stats_copied_error_value.get_lock():
-            stats += f"{self._stats_copied_error_value.value}  "
+        # Backup-only stats
+        if self.mode_current == MODE_BACKUP:
+            with self._stats_copied_ok_value.get_lock():
+                stats += f"cp: {self._stats_copied_ok_value.value}, "
+            with self._stats_copied_error_value.get_lock():
+                stats += f"{self._stats_copied_error_value.value}  "
 
-        with self._stats_deleted_ok_value.get_lock():
-            stats += f"FDdel: {self._stats_deleted_ok_value.value}, "
-        with self._stats_deleted_error_value.get_lock():
-            stats += f"{self._stats_deleted_error_value.value}  "
+            with self._stats_deleted_ok_value.get_lock():
+                stats += f"del: {self._stats_deleted_ok_value.value}, "
+            with self._stats_deleted_error_value.get_lock():
+                stats += f"{self._stats_deleted_error_value.value}  "
 
-        with self._stats_created_dirs_ok_value.get_lock():
-            stats += f"Dcr: {self._stats_created_dirs_ok_value.value}, "
-        with self._stats_created_dirs_error_value.get_lock():
-            stats += f"{self._stats_created_dirs_error_value.value}  "
+            with self._stats_created_dirs_ok_value.get_lock():
+                stats += f"Dcr: {self._stats_created_dirs_ok_value.value}, "
+            with self._stats_created_dirs_error_value.get_lock():
+                stats += f"{self._stats_created_dirs_error_value.value}  "
 
-        with self._stats_created_symlinks_value.get_lock():
-            stats += f"Scr: {self._stats_created_symlinks_value.value}  "
+            with self._stats_created_symlinks_value.get_lock():
+                stats += f"Scr: {self._stats_created_symlinks_value.value}  "
 
-        with self._stats_validate_match.get_lock():
-            stats += f"Cvld: {self._stats_validate_match.value}, "
-        with self._stats_validate_not_match.get_lock():
-            stats += f"{self._stats_validate_not_match.value}, "
-        with self._stats_validate_not_exist.get_lock():
-            stats += f"{self._stats_validate_not_exist.value}"
+        # Validation-only stats
+        elif self.mode_current == MODE_VALIDATION:
+            with self._stats_validate_match.get_lock():
+                stats += f"Cvld: {self._stats_validate_match.value}, "
+            with self._stats_validate_not_match.get_lock():
+                stats += f"{self._stats_validate_not_match.value}, "
+            with self._stats_validate_not_exist.get_lock():
+                stats += f"{self._stats_validate_not_exist.value}"
         return stats
 
     def get_max_cpu_numbers(self) -> int:
@@ -292,42 +319,129 @@ class Backupper:
         logging.info(f"{len(input_entries)} entries parsed")
         return input_entries
 
-    def _update_progress_bar_status_bar(self, stage_step: int, stage_steps: int, inverted: bool = False) -> None:
-        """Sets progress bar value and current stats using statusbar
+    def _show_stats(self, stage_step: int, stage_steps: int, inverted: bool = False) -> None:
+        """Sets progress bar value, statusbar text and time information
 
         Args:
             stage_step (int): current step inside stage (starting from 0 or 1)
             stage_steps (int): total number of steps inside stage
             inverted (bool, optional): are steps progress inside stage inverted? Defaults to False.
         """
-        # Exit if no progress bar updater or no stages
-        if self._progress_set_value_signal is None or self._stages_total <= 0:
-            return
+        # Update progress bar
+        progress_total = 0.0
+        steps_progress = 0.0
+        if self._progress_set_value_signal is not None and self._stages_total > 0 and stage_steps != 0:
+            # Calculate stage's step progress
+            if inverted:
+                steps_progress = (stage_steps - stage_step) / stage_steps
+            else:
+                steps_progress = stage_step / stage_steps
+            steps_progress = max(min(steps_progress, 1.0), 0.0)
 
-        # Prevent division by zero
-        if stage_steps == 0 or self._stages_total == 0:
-            return
+            # Calculate stage progress
+            stage_progress_prev = (self._stage_current - 1) / self._stages_total
+            stage_progress = self._stage_current / self._stages_total
 
-        # Calculate stage's step progress
-        if inverted:
-            steps_progress = (stage_steps - stage_step) / stage_steps
-        else:
-            steps_progress = stage_step / stage_steps
-        steps_progress = max(min(steps_progress, 1.0), 0.0)
+            # Calculate total progress
+            progress_total = steps_progress * (stage_progress - stage_progress_prev) + stage_progress_prev
 
-        # Calculate stage progress
-        stage_progress_prev = (self._stage_current - 1) / self._stages_total
-        stage_progress = self._stage_current / self._stages_total
+            # Set value
+            self._progress_set_value_signal.emit(int(progress_total * 100.0))
 
-        # Calculate total progress
-        progress_total = steps_progress * (stage_progress - stage_progress_prev) + stage_progress_prev
-
-        # Set value
-        self._progress_set_value_signal.emit(int(progress_total * 100.0))
-
-        # Show stats
+        # Update statusbar
         if self._statusbar_show_message_signal is not None:
             self._statusbar_show_message_signal.emit(self.stats_to_statusbar())
+
+        # Update time
+        if self._time_passed_signal is not None and self._time_left_signal is not None:
+            # Calculate passed time
+            time_passed = time.time() - self._time_started
+
+            # Check it to be > 0 and less then 24h
+            if time_passed <= 0.0 or time_passed >= 86399.0:
+                return
+
+            # Set time passed
+            self._time_passed_str = str(datetime.strptime(str(timedelta(seconds=int(time_passed))), "%H:%M:%S").time())
+            self._time_passed_signal.emit(self._time_passed_str)
+
+            # No more time left
+            if int(progress_total * 100.0) == 100:
+                self._time_left_signal.emit("00:00:00 | 00:00:00")
+                return
+
+            # Calculate current step
+            time_delta = time_passed - self._time_passed_prev
+
+            # Check it (just in case)
+            if time_delta <= 0.0:
+                return
+
+            # Calculate deltas
+            progress_stage_delta = steps_progress - self._progress_steps_prev
+            progress_total_delta = progress_total - self._progress_total_prev
+
+            # Save data for next cycle
+            self._progress_steps_prev = steps_progress
+            self._progress_total_prev = progress_total
+            self._time_passed_prev = time_passed
+
+            # Check them
+            if progress_stage_delta <= 0.0 or progress_total_delta <= 0.0:
+                return
+
+            # Calculate stage time left
+            time_left_stage = time_delta / progress_stage_delta
+
+            # Calculate total time left
+            time_left_total = time_delta / progress_total_delta
+
+            # Filter them
+            if self._time_left_total_filtered < 1.0:
+                self._time_left_total_filtered = time_left_total
+            else:
+                self._time_left_total_filtered *= TIME_LEFT_FILTER
+                self._time_left_total_filtered += time_left_total * (1.0 - TIME_LEFT_FILTER)
+            if self._time_left_stage_filtered < 1.0:
+                self._time_left_stage_filtered = time_left_stage
+            else:
+                self._time_left_stage_filtered *= TIME_LEFT_FILTER
+                self._time_left_stage_filtered += time_left_stage * (1.0 - TIME_LEFT_FILTER)
+
+            # Convert to seconds
+            seconds_left_total = int(self._time_left_total_filtered)
+            seconds_left_stage = int(self._time_left_stage_filtered)
+
+            # Check it
+            if (
+                seconds_left_total < 0
+                or seconds_left_total >= 86400
+                or seconds_left_stage < 0
+                or seconds_left_stage >= 86400
+            ):
+                self._time_left_signal.emit("--:--:-- | --:--:--")
+                return
+
+            # Set time left
+            time_left_stage_str = str(datetime.strptime(str(timedelta(seconds=seconds_left_stage)), "%H:%M:%S").time())
+            time_left_total_str = str(datetime.strptime(str(timedelta(seconds=seconds_left_total)), "%H:%M:%S").time())
+            self._time_left_signal.emit(f"{time_left_stage_str} | {time_left_total_str}")
+
+    def _time_clear_start(self) -> None:
+        """Resets and initializes time-related variables
+        (must be called before backup / validation)
+        """
+        self._time_started = time.time()
+        self._time_passed_prev = 0.0
+        self._progress_total_prev = 0.0
+        self._progress_steps_prev = 0.0
+        self._time_left_stage_filtered = 0.0
+        self._time_left_total_filtered = 0.0
+        self._time_passed_str = "--:--:--"
+        if self._time_passed_signal is not None:
+            self._time_passed_signal.emit(self._time_passed_str)
+        if self._time_left_signal is not None:
+            self._time_left_signal.emit("--:--:-- | --:--:--")
 
     def _exit(self, exit_status_: int) -> None:
         """Emits signals and resets requests
@@ -343,6 +457,9 @@ class Backupper:
         self.request_resume = False
         self.request_cancel = False
         self.paused = False
+        self.mode_current = MODE_IDLE
+        if self._time_left_signal is not None:
+            self._time_left_signal.emit("00:00:00 | 00:00:00")
 
     def _pause(self) -> bool:
         """Waits until self.request_resume or self.request_cancel
@@ -370,6 +487,8 @@ class Backupper:
         else:
             self.request_resume = False
             self.paused = False
+            self._time_left_stage_filtered = 0.0
+            self._time_left_total_filtered = 0.0
             logging.info("Backup resumed")
             if self._backup_paused_resumed_signal is not None:
                 self._backup_paused_resumed_signal.emit(False)
@@ -758,7 +877,7 @@ class Backupper:
 
                 # Update progress every 100ms
                 if time.time() - update_progress_timer_ >= 0.1:
-                    self._update_progress_bar_status_bar(progress_counter, size_total_)
+                    self._show_stats(progress_counter, size_total_)
 
             # Done
             logging.info(f"Filler thread finished. Skipped {skipped_counter} checksums")
@@ -908,11 +1027,21 @@ class Backupper:
                 + len(output_tree_["symlinks"])
                 + len(output_tree_["unknown"])
             )
-            for tree_type_, local_tree_ in output_tree_.items():
-                for path_relative_, root_and_empty_ in local_tree_.items():
+
+            # Checksums file
+            checksums_file = f"checksums.{self._config_manager.get_config('checksum_alg').lower()}"
+
+            # Read each tree one by one starting from symlinks, then unknown, then files, then dirs
+            tree_types = ["symlinks", "unknown", "files", "dirs"]
+            for tree_type_ in tree_types:
+                for path_relative_, root_and_empty_ in output_tree_[tree_type_].items():
                     # Check if we need to exit
                     if exit_flag_["exit"]:
                         break
+
+                    # Ignore checksums file
+                    if tree_type_ == "files" and path_relative_ == checksums_file:
+                        continue
 
                     # Put in the queue as (tree_type, filepath_rel, root_empty)
                     output_tree_queue_.put((tree_type_, path_relative_, root_and_empty_), block=True)
@@ -922,7 +1051,7 @@ class Backupper:
 
                     # Update progress every 100ms
                     if time.time() - update_progress_timer_ >= 0.1:
-                        self._update_progress_bar_status_bar(progress_counter, size_total_)
+                        self._show_stats(progress_counter, size_total_)
 
             # Done
             logging.info("Filler thread finished")
@@ -1058,7 +1187,7 @@ class Backupper:
 
                     # Update progress every 100ms
                     if time.time() - update_progress_timer_ >= 0.1:
-                        self._update_progress_bar_status_bar(progress_counter, size_total_)
+                        self._show_stats(progress_counter, size_total_)
 
             # Done
             logging.info("Filler thread finished")
@@ -1140,6 +1269,8 @@ class Backupper:
         self,
         input_entries: Dict,
         output_dir: str,
+        time_passed_signal: QtCore.pyqtSignal or None = None,
+        time_left_signal: QtCore.pyqtSignal or None = None,
         progress_set_value_signal: QtCore.pyqtSignal or None = None,
         statusbar_show_message_signal: QtCore.pyqtSignal or None = None,
         backup_paused_resumed_signal: QtCore.pyqtSignal or None = None,
@@ -1150,6 +1281,8 @@ class Backupper:
         Args:
             input_entries (Dict): parsed valid input entries as dictionary {"path": skip} ex. {"path_1": False, ...}
             output_dir (str): backup directory
+            time_passed_signal (QtCore.pyqtSignal or None, optional): PyQt signal (str) to update time passed label
+            time_left_signal (QtCore.pyqtSignal or None, optional): PyQt signal (str) to update time left label
             progress_set_value_signal (QtCore.pyqtSignal or None): PyQt signal (int) to update progress bar
             statusbar_show_message_signal (QtCore.pyqtSignal or None): PyQt signal (int) to update status bar
             backup_paused_resumed_signal (QtCore.pyqtSignal or None): PyQt signal (bool) for pause callback
@@ -1158,11 +1291,19 @@ class Backupper:
         Returns:
             int: EXIT_CODE_... code
         """
+        # Set mode
+        self.mode_current = MODE_BACKUP
+
         # Update signals
+        self._time_passed_signal = time_passed_signal
+        self._time_left_signal = time_left_signal
         self._progress_set_value_signal = progress_set_value_signal
         self._statusbar_show_message_signal = statusbar_show_message_signal
         self._backup_paused_resumed_signal = backup_paused_resumed_signal
         self._finished_signal = finished_signal
+
+        # Update time
+        self._time_clear_start()
 
         # Clear flags
         self.request_pause = False
@@ -1203,7 +1344,7 @@ class Backupper:
                 os.makedirs(output_dir)
 
             # Update progress bar (no real progress here)
-            self._update_progress_bar_status_bar(10, 100)
+            self._show_stats(10, 100)
 
             # Parse input_entries and extract all files and dirs
             logging.info("Generating input entries tree")
@@ -1229,7 +1370,7 @@ class Backupper:
             )
 
             # Update progress bar (no real progress here)
-            self._update_progress_bar_status_bar(50, 100)
+            self._show_stats(50, 100)
 
             # Extract all existing files inside backup (output_directory)
             logging.info("Generating output (existing files) tree")
@@ -1251,7 +1392,7 @@ class Backupper:
             )
 
             # Update progress bar (no real progress here)
-            self._update_progress_bar_status_bar(100, 100)
+            self._show_stats(100, 100)
 
             #############################################
             # STAGE 2: Generate input entries checksums #
@@ -1376,7 +1517,7 @@ class Backupper:
 
                         # Update progress every 100ms
                         if time.time() - update_progress_timer_ >= 0.1:
-                            self._update_progress_bar_status_bar(progress_counter, size_total_)
+                            self._show_stats(progress_counter, size_total_)
 
                     # Error occurred -> log error and increment error counter
                     except Exception as e:
@@ -1510,7 +1651,7 @@ class Backupper:
 
                         # Update progress every 100ms
                         if time.time() - update_progress_timer_ >= 0.1:
-                            self._update_progress_bar_status_bar(progress_counter, size_total_)
+                            self._show_stats(progress_counter, size_total_)
 
             # Update statusbar
             if self._statusbar_show_message_signal is not None:
@@ -1531,6 +1672,8 @@ class Backupper:
     def validate(
         self,
         output_dir: str,
+        time_passed_signal: QtCore.pyqtSignal or None = None,
+        time_left_signal: QtCore.pyqtSignal or None = None,
         progress_set_value_signal: QtCore.pyqtSignal or None = None,
         statusbar_show_message_signal: QtCore.pyqtSignal or None = None,
         finished_signal: QtCore.pyqtSignal or None = None,
@@ -1539,6 +1682,8 @@ class Backupper:
 
         Args:
             output_dir (str): absolute path of directory with backup
+            time_passed_signal (QtCore.pyqtSignal or None, optional): PyQt signal (str) to update time passed label
+            time_left_signal (QtCore.pyqtSignal or None, optional): PyQt signal (str) to update time left label
             progress_set_value_signal (QtCore.pyqtSignal or None, optional): PyQt signal (int) to update progress bar
             statusbar_show_message_signal (QtCore.pyqtSignal or None): PyQt signal (int) to update status bar
             finished_signal (QtCore.pyqtSignal or None, optional): PyQt signal (int) for exit callback
@@ -1546,11 +1691,19 @@ class Backupper:
         Returns:
             int: EXIT_CODE_... code
         """
+        # Set mode
+        self.mode_current = MODE_VALIDATION
+
         # Update signals
+        self._time_passed_signal = time_passed_signal
+        self._time_left_signal = time_left_signal
         self._progress_set_value_signal = progress_set_value_signal
         self._statusbar_show_message_signal = statusbar_show_message_signal
         self._backup_paused_resumed_signal = None
         self._finished_signal = finished_signal
+
+        # Update time
+        self._time_clear_start()
 
         # Clear flags
         self.request_pause = False
@@ -1698,7 +1851,7 @@ class Backupper:
 
                 # Update progress every 100ms
                 if time.time() - update_progress_timer_ >= 0.1:
-                    self._update_progress_bar_status_bar(progress_counter, size_total_)
+                    self._show_stats(progress_counter, size_total_)
 
             # Update statusbar
             if self._statusbar_show_message_signal is not None:

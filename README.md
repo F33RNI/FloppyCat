@@ -116,6 +116,7 @@ Result:
 
 ## 📝 TODO
 
+- Improve calculation of remaining time
 - Add data compression
 - Add data encryption
 - Add dark theme
