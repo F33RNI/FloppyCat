@@ -192,7 +192,7 @@ def copy_entries(
                     continue
 
                 # Create symlink
-                os.symlink(link_to, output_path_abs)
+                os.symlink(link_to, output_path_abs, target_is_directory=os.path.isdir(link_to))
                 with stats_created_symlinks_value.get_lock():
                     stats_created_symlinks_value.value += 1
 
