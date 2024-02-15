@@ -99,7 +99,9 @@ Result:
 6. Press `Start` button to start the backup process. Upon completion of the backup, **you will get a copy of your data and a file with their checksums** _(as well as some useful statistics and a `tree.txt` file, if `Generate tree.txt file after backup` option was enabled)_
 7. If after some time, you need to check whether the data in the backup has become corrupted, specify your backup directory using _Where to save backup:_ and press `Validate` button. The checksums of all files inside the existing backup will be recalculated and compared with the existing file. At the output you will get statistics with the error rate and some other useful information
 
-> **Note:** It is recommended to select an output folder (where to save the backup) on the **external drive**. Select your valuable data as input and periodically use FloppyCat to update your backup!
+> **NOTE:** It is recommended to select an output folder (where to save the backup) on the **external drive**. Select your valuable data as input and periodically use FloppyCat to update your backup!
+>
+> **NOTE:** When backup home directory or system files, run FloppyCat as root, because some directories may not be readable by the current user!
 
 ## 🏗️ Build from source
 
@@ -110,7 +112,7 @@ Result:
 5. Install requirements `pip install -r requirements.txt --upgrade`
 6. Run `pyinstaller FloppyCat.spec` to build executable
 
-> **Note:** if you want to enable logging to console (STDOUT), pass `--enable_console_logging` argument while running FloppyCat
+> **NOTE:** if you want to enable logging to console (STDOUT), pass `--enable_console_logging` argument while running FloppyCat
 
 ----------
 

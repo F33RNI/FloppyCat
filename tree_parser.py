@@ -171,13 +171,13 @@ def tree_parser(
 
                 # Symlink and not follow it -> just parse as symlink
                 if dir_or_file.is_symlink() and not follow_symlinks:
-                    # (relative path, root dir path, PATH_..., is empty directory)
-                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_SYMLINK, False))
+                    # (relative path, root dir path, PATH_..., is empty directory, permission mask)
+                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_SYMLINK, False, -1))
 
                 # Just file -> put to parsed queue
                 elif dir_or_file.is_file():
-                    # (relative path, root dir path, PATH_..., is empty directory)
-                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_FILE, False))
+                    # (relative path, root dir path, PATH_..., is empty directory, permission mask)
+                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_FILE, False, -1))
 
                     # Increment counter
                     with stats_tree_parsed_files.get_lock():
@@ -191,8 +191,14 @@ def tree_parser(
                     except:
                         is_empty = False
 
-                    # (relative path, root dir path, PATH_..., is empty directory)
-                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_DIR, is_empty))
+                    # Try to get permission mask
+                    try:
+                        st_mask = os.stat(dir_or_file).st_mode & 0o777
+                    except:
+                        st_mask = -1
+
+                    # (relative path, root dir path, PATH_..., is empty directory, permission mask)
+                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_DIR, is_empty, st_mask))
 
                     # Put again in recursion if not empty with the same root
                     if not is_empty:
@@ -207,8 +213,8 @@ def tree_parser(
                     # Log it
                     logging.warning(f"'{dir_or_file}' is not a symbolic link, file or directory")
 
-                    # (relative path, root dir path, PATH_..., is empty directory)
-                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_UNKNOWN, False))
+                    # (relative path, root dir path, PATH_..., is empty directory, permission mask)
+                    parsed_queue.put((dir_or_file_rel, root_dir, PATH_UNKNOWN, False, -1))
 
                     # Increment unknown counter
                     with stats_tree_parsed_unknown.get_lock():

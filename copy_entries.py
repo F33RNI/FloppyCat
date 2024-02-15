@@ -32,10 +32,109 @@ from _control_values import PROCESS_CONTROL_WORK, PROCESS_CONTROL_PAUSE, PROCESS
 QUEUE_TIMEOUT = 5
 
 
+def make_dirs(
+    input_dirs_tree: Dict,
+    output_dir: str,
+    target_dir_path_rel: str,
+    stats_created_dirs_ok_value: multiprocessing.Value,
+    stats_created_dirs_error_value: multiprocessing.Value,
+) -> bool:
+    """Creates tree of directories copying their permissions mask from input_dirs_tree
+
+    Args:
+        input_dirs_tree (Dict): dictionary of "dirs" dictionary of input tree (to read permissions masks)
+        output_dir (str): path to the output (backup) directory
+        target_dir_path_rel (str): relative to output_dir path to target directory to create
+        stats_created_dirs_ok_value (multiprocessing.Value): counter of total successful mkdirs calls
+        stats_created_dirs_error_value (multiprocessing.Value): counter of total unsuccessful mkdirs calls
+
+    Returns:
+        bool: True if target directory created successfully, False if not
+    """
+    # Convert target directory (aka final) path into absolute one
+    target_dir_path_abs = os.path.join(output_dir, target_dir_path_rel)
+
+    # We don't need to do anything if it's a directory and it exists
+    if os.path.exists(target_dir_path_abs) and os.path.isdir(target_dir_path_abs):
+        return True
+
+    # Remove mask from current process
+    original_umask = -1
+    try:
+        original_umask = os.umask(0)
+    except:
+        pass
+
+    # Split our target directory path into parts
+    target_dir_path_rel_parts = target_dir_path_rel.split(os.path.sep)
+
+    # List that will gradually filled with target path parts
+    dir_to_make_rel_parts = []
+
+    # Iterate each part
+    for target_dir_path_rel_part in target_dir_path_rel_parts:
+        # Append to list and create a path to a directory that we need to create
+        dir_to_make_rel_parts.append(target_dir_path_rel_part)
+        dir_to_make_rel = os.path.normpath(os.path.sep.join(dir_to_make_rel_parts))
+
+        # Convert it into absolute path
+        dir_to_make_abs = os.path.join(output_dir, dir_to_make_rel)
+
+        # Check and skip if directory we're trying to make already exists
+        if os.path.exists(dir_to_make_abs) and os.path.isdir(dir_to_make_abs):
+            continue
+
+        # Try to find it in parsed input tree of directories
+        if dir_to_make_rel in input_dirs_tree:
+            # Extract permissions mode
+            st_mode = input_dirs_tree[dir_to_make_rel]["mode"]
+
+        # Seems strange! Log as warning
+        else:
+            st_mode = -1
+            logging.warning(f"Couldn't find {dir_to_make_rel} directory inside parsed input tree!")
+
+        # Try to create directories with specified mode
+        try:
+            # Use os.makedirs instead of os.mkdir just in case
+            if st_mode != -1:
+                # Create directory with desired mask
+                os.makedirs(dir_to_make_abs, mode=st_mode)
+
+            # Leave it as is (no mode specified)
+            else:
+                os.makedirs(dir_to_make_abs)
+
+            # Increment stats counter
+            with stats_created_dirs_ok_value.get_lock():
+                stats_created_dirs_ok_value.value += 1
+
+        # Log error and increment error counter
+        except Exception as e:
+            logging.error(
+                f"Error making {dir_to_make_abs} directory with mode {st_mode if st_mode != -1 else '-'}: {str(e)}"
+            )
+            with stats_created_dirs_error_value.get_lock():
+                stats_created_dirs_error_value.value += 1
+
+    # Restore mask of current process
+    if original_umask != -1:
+        try:
+            os.umask(original_umask)
+        except:
+            pass
+
+    # Finally, check again
+    if os.path.exists(target_dir_path_abs) and os.path.isdir(target_dir_path_abs):
+        return True
+    return False
+
+
 def copy_entries(
     filepaths_queue: multiprocessing.Queue,
     checksums_input: Dict,
     checksums_output: Dict,
+    input_dirs_tree: Dict,
     output_dir: str,
     follow_symlinks: bool,
     stats_copied_ok_value: multiprocessing.Value,
@@ -63,6 +162,7 @@ def copy_entries(
                 "checksum": "file_2_checksum"
             }
         }
+        input_dirs_tree (Dict): dictionary of "dirs" dictionary of input tree (to read permissions masks)
         output_dir (str): path to the output (backup) directory
         follow_symlinks (bool): False to copy symlinks themselves instead of referenced files
         stats_copied_ok_value (multiprocessing.Value): counter of total successful copy calls
@@ -159,24 +259,16 @@ def copy_entries(
             ):
                 continue
 
-            # Try to create directories if not exist
+            # Try to create directories if not exist and skip if failed
             output_file_base_dir = os.path.dirname(output_path_abs)
             if not os.path.exists(output_file_base_dir):
-                try:
-                    os.makedirs(output_file_base_dir)
-                    with stats_created_dirs_ok_value.get_lock():
-                        stats_created_dirs_ok_value.value += 1
-
-                # Ignore dir already exists error
-                except FileExistsError:
-                    pass
-
-                # Other error occurred -> Log it and increment error counter and skip to next cycle
-                except Exception as e:
-                    if logging_queue is not None:
-                        logging.error(f"Error creating directory {output_file_base_dir}: {str(e)}")
-                    with stats_created_dirs_error_value.get_lock():
-                        stats_created_dirs_error_value.value += 1
+                if not make_dirs(
+                    input_dirs_tree,
+                    output_dir,
+                    os.path.relpath(output_file_base_dir, output_dir),
+                    stats_created_dirs_ok_value,
+                    stats_created_dirs_error_value,
+                ):
                     continue
 
             # Copy symlink (create a new one)

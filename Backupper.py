@@ -634,11 +634,13 @@ class Backupper:
             "dirs": {
                 "dir_1_relative_to_root_path": {
                     "root": "dir_1_root_directory"
-                    "empty": False
+                    "empty": False,
+                    "mode": 0o755
                 },
                 "dir_2_relative_to_root_path": {
                     "root": "dir_2_root_directory"
                     "empty": True
+                    "mode": 0o777
                 }
             },
             "symlinks": {
@@ -691,10 +693,18 @@ class Backupper:
             elif os.path.isdir(path_abs):
                 path_type = PATH_DIR
 
+            # Try to get permission mask
+            st_mode = 0
+            if path_type == PATH_DIR:
+                try:
+                    st_mode = os.stat(path_abs).st_mode & 0o777
+                except:
+                    pass
+
             # Add to the output queue if not self
-            # (relative path, root dir path, PATH_..., is empty directory)
+            # (relative path, root dir path, PATH_..., is empty directory, permission mask)
             if root_relative_to_dirname:
-                parsed_queue.put((os.path.relpath(path_abs, root_dir), root_dir, path_type, False))
+                parsed_queue.put((os.path.relpath(path_abs, root_dir), root_dir, path_type, False, st_mode))
 
             # Parse tree if it's a directory
             if path_type == PATH_DIR:
@@ -747,7 +757,7 @@ class Backupper:
             while not parsed_queue.empty():
                 try:
                     # Get data
-                    path_rel, root_dir, path_type, is_empty = parsed_queue.get(block=True, timeout=0.1)
+                    path_rel, root_dir, path_type, is_empty, st_mode = parsed_queue.get(block=True, timeout=0.1)
 
                     # Convert to absolute path
                     path_abs = os.path.join(root_dir, path_rel)
@@ -756,7 +766,7 @@ class Backupper:
                     if path_type is PATH_FILE:
                         tree["files"][path_rel] = {"root": root_dir}
                     elif path_type is PATH_DIR:
-                        tree["dirs"][path_rel] = {"root": root_dir, "empty": is_empty}
+                        tree["dirs"][path_rel] = {"root": root_dir, "empty": is_empty, "mode": st_mode}
                     elif path_type is PATH_SYMLINK:
                         tree["symlinks"][path_rel] = {"root": root_dir}
                     else:
@@ -1225,6 +1235,7 @@ class Backupper:
                     filepaths_queue,
                     checksums_input,
                     checksums_output,
+                    input_tree["dirs"],
                     output_dir,
                     self._config_manager.get_config("follow_symlinks"),
                     self._stats_copied_ok_value,
